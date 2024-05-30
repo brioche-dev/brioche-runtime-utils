@@ -532,6 +532,7 @@ checksum = "86b83b8b9847f9bf95ef68afb0b8e6cdb80f498442f5179a29fad448fcc1eaea"
 name = "runnable"
 version = "0.1.0"
 dependencies = [
+ "cfg-if",
  "clap",
  "color-eyre",
  "eyre",

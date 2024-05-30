@@ -40,10 +40,22 @@ fn run() -> Result<(), RunnableError> {
             let runnable_data =
                 serde_json::from_str(&runnable_data).map_err(RunnableError::DeserializeRunnable)?;
 
-            std::fs::copy(runnable, &output)?;
-            let mut output = std::fs::OpenOptions::new().append(true).open(&output)?;
+            let mut runnable_file = std::fs::File::open(&runnable)?;
+            let mut output_file = std::fs::File::create(&output)?;
 
-            runnable_core::inject(&mut output, &runnable_data)?;
+            // Copy the runnable file to the output
+            std::io::copy(&mut runnable_file, &mut output_file)?;
+
+            // Append the runnable data to the output
+            runnable_core::inject(&mut output_file, &runnable_data)?;
+
+            // Make the output file executable
+            cfg_if::cfg_if! {
+                if #[cfg(unix)] {
+                    use std::os::unix::fs::PermissionsExt as _;
+                    output_file.set_permissions(std::fs::Permissions::from_mode(0o755))?;
+                }
+            }
         }
         Args::Read { program } => {
             let mut program = std::fs::File::open(program)?;
