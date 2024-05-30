@@ -10,13 +10,17 @@ const MARKER: &[u8; 32] = b"brioche_runnable_v0             ";
 const LENGTH_BYTES: usize = 4;
 type LengthInt = u32;
 
+#[serde_with::serde_as]
 #[derive(Debug, serde::Serialize, serde::Deserialize, bincode::Encode, bincode::Decode)]
 #[serde(rename_all = "camelCase")]
 pub struct Runnable {
     pub command: RunnableTemplate,
+
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub args: Vec<RunnableTemplate>,
+
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde_as(as = "serde_with::Map<_, _>")]
     pub env: Vec<(String, RunnableTemplate)>,
 }
 
