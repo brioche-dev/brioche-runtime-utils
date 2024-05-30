@@ -1,0 +1,174 @@
+name: CI
+
+on:
+  - push
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+env:
+  NIGHTLY_TOOLCHAIN: nightly-2023-12-30
+
+jobs:
+  check:
+    name: Run checks
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Check formatting
+        run: cargo fmt -- --check
+      - name: Check Clippy
+        run: cargo clippy --all -- -Dwarnings
+  test:
+    name: Run tests
+    strategy:
+      matrix:
+        runs_on:
+          - ubuntu-22.04
+          - macos-14
+    runs-on: ${{ matrix.runs_on }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      # Run tests in release mode. Running tests in debug mode uses a lot
+      # more disk space, so much so that it can cause the run to fail
+      - name: Run tests
+        run: cargo test --all --release
+  build:
+    name: Build artifacts
+    strategy:
+      matrix:
+        platform:
+          - name: x86_64-linux
+            runs_on: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            tools_target: x86_64-unknown-linux-musl
+          - name: x86_64-macos
+            runs_on: macos-14
+            target: x86_64-apple-darwin
+            tools_target: x86_64-apple-darwin
+          - name: aarch64-macos
+            runs_on: macos-14
+            target: aarch64-apple-darwin
+            tools_target: aarch64-apple-darwin
+
+    runs-on: ${{ matrix.platform.runs_on }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Install Rust targets
+        run: rustup target add "$TARGET" "$TOOLS_TARGET"
+        env:
+          TARGET: ${{ matrix.platform.target }}
+          TOOLS_TARGET: ${{ matrix.platform.tools_target }}
+      - name: Install Rust nightly toolchain
+        run: |
+          rustup toolchain install "$NIGHTLY_TOOLCHAIN" \
+            --target "$TOOLS_TARGET" \
+            --component rust-src
+        env:
+          TOOLS_TARGET: ${{ matrix.platform.tools_target }}
+      - name: Build Brioche runtime utils
+        run: |
+          cargo +"$NIGHTLY_TOOLCHAIN" build \
+            --all \
+            --bins \
+            --profile=release-tiny \
+            --target="$TOOLS_TARGET" \
+            -Z 'build-std=std,panic_abort' \
+            -Z 'build-std-features=panic_immediate_abort'
+        env:
+          TOOLS_TARGET: ${{ matrix.platform.tools_target }}
+      - name: Prepare artifact
+        run: |
+          mkdir -p "artifacts/brioche/$PLATFORM/"
+          mkdir -p "artifacts/brioche-runtime-utils/$PLATFORM/bin/"
+          cp \
+            "target/$TOOLS_TARGET/release-tiny/runnable" \
+            "target/$TOOLS_TARGET/release-tiny/start-runnable" \
+            "artifacts/brioche-runtime-utils/$PLATFORM/bin/"
+          (cd "artifacts/brioche-runtime-utils/$PLATFORM/" && tar --zstd -cf "../../brioche/$PLATFORM/brioche-runtime-utils.tar.zstd" .)
+
+
+          if command -v tree &> /dev/null; then
+            tree --du -h artifacts/brioche-runtime-utils
+            tree --du -h artifacts/brioche
+          fi
+        env:
+          PLATFORM: ${{ matrix.platform.name }}
+          TARGET: ${{ matrix.platform.target }}
+          TOOLS_TARGET: ${{ matrix.platform.tools_target }}
+          PACKED_EXEC: ${{ matrix.platform.packed_exec }}
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: brioche-runtime-utils-${{ matrix.platform.name }}
+          if-no-files-found: error
+          path: artifacts/brioche
+  push:
+    name: Push artifacts
+    if: github.repository == 'brioche-dev/brioche-runtime-utils'
+    needs: [check, test, build]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Download artifacts (x86_64-linux)
+        uses: actions/download-artifact@v4
+        with:
+          name: brioche-runtime-utils-x86_64-linux
+          path: artifacts/brioche
+      - name: Download artifacts (x86_64-macos)
+        uses: actions/download-artifact@v4
+        with:
+          name: brioche-runtime-utils-x86_64-macos
+          path: artifacts/brioche
+      - name: Download artifacts (aarch64-macos)
+        uses: actions/download-artifact@v4
+        with:
+          name: brioche-runtime-utils-aarch64-macos
+          path: artifacts/brioche
+      # Prepare the upload for the current commit and branch:
+      # - The current branch will be uploaded with all artifacts
+      # - The current commit will be uploaded with all artifacts
+      # - The current files from the bucket will be downloaded first,
+      #   so that existing files are not overwritten. This is so that file
+      #   hashes never change under the commit e.g. if the GitHub Actions
+      #   workflow is re-run
+      - name: Prepare upload
+        run: |
+          mkdir -p artifacts/uploads/commit artifacts/uploads/branch
+          cp -r artifacts/brioche/* artifacts/uploads/commit/
+          cp -r artifacts/brioche/* artifacts/uploads/branch/
+
+          if command -v tree &> /dev/null; then
+            tree --du -h artifacts/uploads/commit
+            tree --du -h artifacts/uploads/branch
+          fi
+
+          aws s3 sync \
+            --endpoint "$S3_ENDPOINT" \
+            "s3://brioche-dev-development-content/github.com/brioche-dev/brioche-runtime-utils/commits/$GITHUB_SHA/" \
+            artifacts/uploads/commit/
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_S3_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ vars.R2_S3_REGION }}
+          S3_ENDPOINT: ${{ secrets.R2_S3_ENDPOINT }}
+      - name: Upload to S3
+        run: |
+          aws s3 sync \
+            --endpoint "$S3_ENDPOINT" \
+            --delete \
+            artifacts/uploads/branch/ \
+            "s3://brioche-dev-development-content/github.com/brioche-dev/brioche-runtime-utils/branches/$GITHUB_REF_NAME/"
+          aws s3 sync \
+            --endpoint "$S3_ENDPOINT" \
+            --delete \
+            artifacts/uploads/commit/ \
+            "s3://brioche-dev-development-content/github.com/brioche-dev/brioche-runtime-utils/commits/$GITHUB_SHA/"
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_S3_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ vars.R2_S3_REGION }}
+          S3_ENDPOINT: ${{ secrets.R2_S3_ENDPOINT }}
+
