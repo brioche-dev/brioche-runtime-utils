@@ -21,16 +21,16 @@ fn run() -> Result<std::process::ExitCode, RunnableError> {
     let current_exe = std::fs::File::open(&current_exe_path)?;
     let runnable = runnable_core::extract(current_exe)?;
 
-    let command = runnable.command.to_os_string(&current_exe_dir)?;
+    let command = runnable.command.to_os_string(current_exe_dir)?;
     let mut command = std::process::Command::new(command);
 
     for arg in runnable.args {
-        let arg = arg.to_os_string(&current_exe_dir)?;
+        let arg = arg.to_os_string(current_exe_dir)?;
         command.arg(arg);
     }
 
     for (key, value) in runnable.env {
-        let value = value.to_os_string(&current_exe_dir)?;
+        let value = value.to_os_string(current_exe_dir)?;
         command.env(key, value);
     }
 
@@ -58,7 +58,7 @@ enum RunnableError {
     #[error("Invalid executable path")]
     InvalidExecutablePath,
     #[error(transparent)]
-    ExtractRunnableError(#[from] runnable_core::ExtractRunnableError),
+    ExtractError(#[from] runnable_core::ExtractRunnableError),
     #[error(transparent)]
     RunnableTemplateError(#[from] runnable_core::RunnableTemplateError),
 }

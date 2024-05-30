@@ -40,8 +40,8 @@ fn run() -> Result<(), RunnableError> {
             let runnable_data =
                 serde_json::from_str(&runnable_data).map_err(RunnableError::DeserializeRunnable)?;
 
-            let mut runnable_file = std::fs::File::open(&runnable)?;
-            let mut output_file = std::fs::File::create(&output)?;
+            let mut runnable_file = std::fs::File::open(runnable)?;
+            let mut output_file = std::fs::File::create(output)?;
 
             // Copy the runnable file to the output
             std::io::copy(&mut runnable_file, &mut output_file)?;
