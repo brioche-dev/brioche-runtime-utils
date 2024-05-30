@@ -1,0 +1,11 @@
+[workspace]
+members = [ "crates/runnable-core","crates/start-runnable"]
+resolver = "2"
+
+[profile.release-tiny]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
