@@ -34,6 +34,9 @@ fn run() -> Result<std::process::ExitCode, RunnableError> {
         command.env(key, value);
     }
 
+    let extra_args = std::env::args().skip(1);
+    command.args(extra_args);
+
     cfg_if::cfg_if! {
         if #[cfg(unix)] {
             use std::os::unix::process::CommandExt as _;
