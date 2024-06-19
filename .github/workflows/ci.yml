@@ -44,14 +44,17 @@ jobs:
             runs_on: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             tools_target: x86_64-unknown-linux-musl
+            packed_exec: brioche-packed-userland-exec
           - name: x86_64-macos
             runs_on: macos-14
             target: x86_64-apple-darwin
             tools_target: x86_64-apple-darwin
+            packed_exec: brioche-packed-plain-exec
           - name: aarch64-macos
             runs_on: macos-14
             target: aarch64-apple-darwin
             tools_target: aarch64-apple-darwin
+            packed_exec: brioche-packed-plain-exec
 
     runs-on: ${{ matrix.platform.runs_on }}
     steps:
@@ -71,9 +74,18 @@ jobs:
           TOOLS_TARGET: ${{ matrix.platform.tools_target }}
       - name: Build Brioche runtime utils
         run: |
+          cargo build \
+            --all \
+            --bin brioche-ld \
+            --release \
+            --target="$TOOLS_TARGET"
+
           cargo +"$NIGHTLY_TOOLCHAIN" build \
             --all \
-            --bins \
+            --bin brioche-packed-plain-exec \
+            --bin brioche-packed-userland-exec \
+            --bin runnable \
+            --bin start-runnable \
             --profile=release-tiny \
             --target="$TOOLS_TARGET" \
             -Z 'build-std=std,panic_abort' \
@@ -85,11 +97,16 @@ jobs:
           mkdir -p "artifacts/brioche/$PLATFORM/"
           mkdir -p "artifacts/brioche-runtime-utils/$PLATFORM/bin/"
           cp \
+            "target/$TOOLS_TARGET/release/brioche-ld" \
+            "target/$TOOLS_TARGET/release-tiny/brioche-packed-plain-exec" \
+            "target/$TOOLS_TARGET/release-tiny/brioche-packed-userland-exec" \
             "target/$TOOLS_TARGET/release-tiny/runnable" \
             "target/$TOOLS_TARGET/release-tiny/start-runnable" \
             "artifacts/brioche-runtime-utils/$PLATFORM/bin/"
-          (cd "artifacts/brioche-runtime-utils/$PLATFORM/" && tar --zstd -cf "../../brioche/$PLATFORM/brioche-runtime-utils.tar.zstd" .)
 
+          cp "artifacts/brioche-runtime-utils/$PLATFORM/bin/$PACKED_EXEC" "artifacts/brioche-runtime-utils/$PLATFORM/bin/brioche-packed-exec"
+
+          (cd "artifacts/brioche-runtime-utils/$PLATFORM/" && tar --zstd -cf "../../brioche/$PLATFORM/brioche-runtime-utils.tar.zstd" .)
 
           if command -v tree &> /dev/null; then
             tree --du -h artifacts/brioche-runtime-utils
