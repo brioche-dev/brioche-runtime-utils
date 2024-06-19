@@ -211,6 +211,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "brioche-packer"
+version = "0.1.0"
+dependencies = [
+ "brioche-pack",
+ "clap",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "bstr"
 version = "1.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

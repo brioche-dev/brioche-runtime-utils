@@ -1,0 +1,10 @@
+[package]
+name = "brioche-packer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+brioche-pack = { workspace = true }
+clap = { version = "4.4.11", features = ["derive"] }
+serde_json = { version = "1.0.108" }
+thiserror = "1.0.51"
