@@ -52,7 +52,7 @@ fn run() -> Result<ExitCode, LdError> {
             output_path = PathBuf::from(output);
         } else if let Some(output) = arg.strip_prefix(b"-o") {
             let output = output.to_path().map_err(|_| LdError::InvalidPath)?;
-            output_path = output.to_owned();
+            output.clone_into(&mut output_path);
         } else if &**arg == b"-L" {
             let lib_path = args.next().ok_or_else(|| LdError::InvalidArg)?;
             library_search_paths.push(PathBuf::from(lib_path));
