@@ -1,6 +1,17 @@
 [workspace]
-members = [ "crates/runnable-core","crates/start-runnable", "crates/runnable"]
 resolver = "2"
+members = [
+    "crates/brioche-ld",
+    "crates/brioche-packed-plain-exec",
+    "crates/brioche-packed-userland-exec",
+    "crates/brioche-packer",
+    "crates/runnable",
+    "crates/runnable-core",
+    "crates/start-runnable",
+]
+
+[workspace.dependencies]
+brioche-pack = { git = "https://github.com/brioche-dev/brioche.git", default-features = false }
 
 [profile.release-tiny]
 inherits = "release"
