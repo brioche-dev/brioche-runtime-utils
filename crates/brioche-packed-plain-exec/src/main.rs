@@ -138,9 +138,99 @@ fn run() -> Result<(), PackedError> {
         brioche_pack::Pack::Static { .. } => {
             unimplemented!("execution of a static executable");
         }
-        brioche_pack::Pack::Metadata { .. } => {
-            unimplemented!("execution of a metadata pack");
-        }
+        brioche_pack::Pack::Metadata {
+            resource_paths: _,
+            format,
+            metadata,
+        } => match &*format {
+            runnable_core::FORMAT => {
+                let runnable: runnable_core::Runnable = serde_json::from_slice(&metadata)?;
+
+                let program = runnable
+                    .command
+                    .to_os_string(&program_path, &resource_dirs)?;
+
+                let mut command = std::process::Command::new(program);
+                let mut original_args = Some(std::env::args_os().skip(1));
+
+                for arg in &runnable.args {
+                    match arg {
+                        runnable_core::ArgValue::Arg { value } => {
+                            let value = value.to_os_string(&program_path, &resource_dirs)?;
+                            command.arg(value);
+                        }
+                        runnable_core::ArgValue::Rest => {
+                            let original_args =
+                                original_args.take().ok_or(PackedError::RepeatedArgs)?;
+                            command.args(original_args);
+                        }
+                    }
+                }
+
+                if runnable.clear_env {
+                    command.env_clear();
+                }
+
+                for (env_name, env_value) in &runnable.env {
+                    match env_value {
+                        runnable_core::EnvValue::Clear => {
+                            command.env_remove(env_name);
+                        }
+                        runnable_core::EnvValue::Set { value } => {
+                            let value = value.to_os_string(&program_path, &resource_dirs)?;
+                            command.env(env_name, value);
+                        }
+                        runnable_core::EnvValue::Prepend { value, separator } => {
+                            let mut value = value.to_os_string(&program_path, &resource_dirs)?;
+                            let separator =
+                                separator
+                                    .to_os_str()
+                                    .map_err(|_| PackedError::InvalidUtf8 {
+                                        bytes: separator.clone().into(),
+                                    })?;
+
+                            let current_value = std::env::var_os(env_name);
+                            let new_value = match current_value {
+                                Some(current_value) if !current_value.is_empty() => {
+                                    value.push(separator);
+                                    value.push(current_value);
+
+                                    value
+                                }
+                                _ => value,
+                            };
+                            command.env(env_name, new_value);
+                        }
+                        runnable_core::EnvValue::Append { value, separator } => {
+                            let value = value.to_os_string(&program_path, &resource_dirs)?;
+                            let separator =
+                                separator
+                                    .to_os_str()
+                                    .map_err(|_| PackedError::InvalidUtf8 {
+                                        bytes: separator.clone().into(),
+                                    })?;
+
+                            let current_value = std::env::var_os(env_name);
+                            let new_value = match current_value {
+                                Some(mut current_value) if !current_value.is_empty() => {
+                                    current_value.push(separator);
+                                    current_value.push(value);
+
+                                    current_value
+                                }
+                                _ => value,
+                            };
+                            command.env(env_name, new_value);
+                        }
+                    }
+                }
+
+                todo!();
+            }
+            _ => {
+                unimplemented!("unknown metdata format {format:?}");
+            }
+        },
     }
 }
 
@@ -149,11 +239,19 @@ enum PackedError {
     #[error(transparent)]
     IoError(#[from] std::io::Error),
     #[error(transparent)]
+    SerdeJsonError(#[from] serde_json::Error),
+    #[error(transparent)]
     ExtractPackError(#[from] brioche_pack::ExtractPackError),
     #[error(transparent)]
     PackResourceDirError(#[from] brioche_pack::PackResourceDirError),
+    #[error(transparent)]
+    RunnableTemplateError(#[from] runnable_core::RunnableTemplateError),
+    #[error("tried to pass remaining arguments more than once")]
+    RepeatedArgs,
     #[error("resource not found: {resource}")]
     ResourceNotFound { resource: PathBuf },
+    #[error("invalid UTF-8: {bytes:?}")]
+    InvalidUtf8 { bytes: bstr::BString },
     #[error("invalid path: {path:?}")]
     InvalidPathBytes { path: bstr::BString },
     #[error("invalid path: {path:?}")]
