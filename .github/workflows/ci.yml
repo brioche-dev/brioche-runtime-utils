@@ -85,8 +85,6 @@ jobs:
             --all \
             --bin brioche-packed-plain-exec \
             --bin brioche-packed-userland-exec \
-            --bin runnable \
-            --bin start-runnable \
             --profile=release-tiny \
             --target="$TOOLS_TARGET" \
             -Z 'build-std=std,panic_abort' \
@@ -102,8 +100,6 @@ jobs:
             "target/$TOOLS_TARGET/release/brioche-packer" \
             "target/$TOOLS_TARGET/release-tiny/brioche-packed-plain-exec" \
             "target/$TOOLS_TARGET/release-tiny/brioche-packed-userland-exec" \
-            "target/$TOOLS_TARGET/release-tiny/runnable" \
-            "target/$TOOLS_TARGET/release-tiny/start-runnable" \
             "artifacts/brioche-runtime-utils/$PLATFORM/bin/"
 
           cp "artifacts/brioche-runtime-utils/$PLATFORM/bin/$PACKED_EXEC" "artifacts/brioche-runtime-utils/$PLATFORM/bin/brioche-packed-exec"
