@@ -7,6 +7,12 @@ edition = "2021"
 brioche-autowrap = { path = "../brioche-autowrap" }
 brioche-pack = { workspace = true }
 brioche-resources = { path = "../brioche-resources" }
+bstr = "1.9.1"
 clap = { version = "4.4.11", features = ["derive"] }
+color-eyre = "0.6.3"
+eyre = "0.6.12"
+globset = "0.4.14"
+goblin = "0.8.2"
 serde_json = { version = "1.0.108" }
 thiserror = "1.0.51"
+walkdir = "2.5.0"
