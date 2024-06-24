@@ -136,7 +136,17 @@ fn autowrap_context(args: &AutowrapArgs) -> eyre::Result<AutowrapContext> {
             .join("brioche-env.d")
             .join("env")
             .join("LIBRARY_PATH");
-        let library_path_env_dir_entries = std::fs::read_dir(&library_path_env_dir)?;
+        let library_path_env_dir_entries = match std::fs::read_dir(&library_path_env_dir) {
+            Ok(entries) => entries,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                continue;
+            }
+            Err(error) => {
+                return Err(error).with_context(|| {
+                    format!("failed to read directory {:?}", library_path_env_dir)
+                });
+            }
+        };
         for entry in library_path_env_dir_entries {
             let entry = entry?;
             eyre::ensure!(
