@@ -4,7 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+brioche-autowrap = { path = "../brioche-autowrap" }
 brioche-pack = { workspace = true }
+brioche-resources = { path = "../brioche-resources" }
 clap = { version = "4.4.11", features = ["derive"] }
 serde_json = { version = "1.0.108" }
 thiserror = "1.0.51"

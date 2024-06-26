@@ -1,11 +1,11 @@
 [package]
-name = "brioche-packed-plain-exec"
-version = "0.1.1"
+name = "brioche-autowrap"
+version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 brioche-pack = { workspace = true }
 brioche-resources = { path = "../brioche-resources" }
-bstr = "1.8.0"
-libc = "0.2.151"
-thiserror = "1.0.51"
+bstr = "1.9.1"
+goblin = "0.8.2"
+thiserror = "1.0.61"
