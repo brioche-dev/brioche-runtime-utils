@@ -33,9 +33,8 @@ pub fn find_resource_dirs(
         }
     }
 
-    match find_resource_dir_from_program(program) {
-        Ok(pack_resource_dir) => paths.push(pack_resource_dir),
-        Err(PackResourceDirError::NotFound) => {}
+    match find_resource_dirs_from_program(program, &mut paths) {
+        Ok(()) | Err(PackResourceDirError::NotFound) => {}
         Err(error) => {
             return Err(error);
         }
@@ -68,27 +67,40 @@ pub fn find_in_resource_dirs(resource_dirs: &[PathBuf], subpath: &Path) -> Optio
     None
 }
 
-fn find_resource_dir_from_program(program: &Path) -> Result<PathBuf, PackResourceDirError> {
+fn find_resource_dirs_from_program(
+    program: &Path,
+    resource_dirs: &mut Vec<PathBuf>,
+) -> Result<(), PackResourceDirError> {
     let program = std::env::current_dir()?.join(program);
 
     let Some(mut current_dir) = program.parent() else {
         return Err(PackResourceDirError::NotFound);
     };
 
+    let mut found = false;
+    let mut reached_end = false;
     for _ in 0..SEARCH_DEPTH_LIMIT {
         let pack_resource_dir = current_dir.join("brioche-resources.d");
         if pack_resource_dir.is_dir() {
-            return Ok(pack_resource_dir);
+            resource_dirs.push(pack_resource_dir);
+            found = true;
         }
 
         let Some(parent) = current_dir.parent() else {
-            return Err(PackResourceDirError::NotFound);
+            reached_end = true;
+            break;
         };
 
         current_dir = parent;
     }
 
-    Err(PackResourceDirError::DepthLimitReached)
+    if found {
+        Ok(())
+    } else if reached_end {
+        Err(PackResourceDirError::NotFound)
+    } else {
+        Err(PackResourceDirError::DepthLimitReached)
+    }
 }
 
 pub fn add_named_blob(
