@@ -225,7 +225,8 @@ fn run() -> Result<(), PackedError> {
                     }
                 }
 
-                todo!();
+                let error = command.exec();
+                Err(PackedError::IoError(error))
             }
             _ => {
                 unimplemented!("unknown metdata format {format:?}");
