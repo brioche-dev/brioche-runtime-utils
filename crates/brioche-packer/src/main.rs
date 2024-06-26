@@ -3,7 +3,9 @@ use std::{os::unix::fs::OpenOptionsExt as _, path::PathBuf, process::ExitCode};
 use clap::Parser;
 
 mod autowrap;
+mod resources;
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Parser)]
 enum Args {
     Pack {

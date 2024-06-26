@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use bstr::ByteSlice as _;
+use bstr::{ByteSlice as _, ByteVec as _};
 use encoding::TickEncoded;
 
 mod encoding;
@@ -35,7 +35,7 @@ pub enum ArgValue {
 }
 
 #[serde_with::serde_as]
-#[derive(Debug, serde::Serialize, serde::Deserialize, bincode::Encode, bincode::Decode)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, bincode::Encode, bincode::Decode)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "type")]
 pub enum EnvValue {
@@ -58,14 +58,124 @@ pub enum EnvValue {
     },
 }
 
+impl EnvValue {
+    pub fn prepend(
+        &mut self,
+        prepend_value: Template,
+        separator: &[u8],
+    ) -> Result<(), RunnableTemplateError> {
+        match self {
+            EnvValue::Clear => {
+                *self = EnvValue::Set {
+                    value: prepend_value,
+                };
+                Ok(())
+            }
+            EnvValue::Set { value } => {
+                value.prepend(prepend_value, separator);
+                Ok(())
+            }
+            EnvValue::Prepend {
+                value,
+                separator: _,
+            } => {
+                value.prepend(prepend_value, separator);
+                Ok(())
+            }
+            EnvValue::Append { .. } => Err(RunnableTemplateError::PrependAndAppend),
+        }
+    }
+
+    pub fn append(
+        &mut self,
+        append_value: Template,
+        separator: &[u8],
+    ) -> Result<(), RunnableTemplateError> {
+        match self {
+            EnvValue::Clear => {
+                *self = EnvValue::Set {
+                    value: append_value,
+                };
+                Ok(())
+            }
+            EnvValue::Set { value } => {
+                value.append(append_value, separator);
+                Ok(())
+            }
+            EnvValue::Prepend { .. } => Err(RunnableTemplateError::PrependAndAppend),
+            EnvValue::Append {
+                value,
+                separator: _,
+            } => {
+                value.append(append_value, separator);
+                Ok(())
+            }
+        }
+    }
+}
+
 #[serde_with::serde_as]
-#[derive(Debug, serde::Serialize, serde::Deserialize, bincode::Encode, bincode::Decode)]
+#[derive(
+    Debug, Clone, Default, serde::Serialize, serde::Deserialize, bincode::Encode, bincode::Decode,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct Template {
-    components: Vec<TemplateComponent>,
+    pub components: Vec<TemplateComponent>,
 }
 
 impl Template {
+    pub fn from_literal(value: Vec<u8>) -> Self {
+        if value.is_empty() {
+            Self::default()
+        } else {
+            Self {
+                components: vec![TemplateComponent::Literal { value }],
+            }
+        }
+    }
+
+    pub fn from_resource_path(resource_path: PathBuf) -> Result<Self, RunnableTemplateError> {
+        let resource = Vec::<u8>::from_path_buf(resource_path)
+            .map_err(|_| RunnableTemplateError::PathError)?;
+        Ok(Self {
+            components: vec![TemplateComponent::Resource { resource }],
+        })
+    }
+
+    pub fn from_relative_path(path: PathBuf) -> Result<Self, RunnableTemplateError> {
+        let path = Vec::<u8>::from_path_buf(path).map_err(|_| RunnableTemplateError::PathError)?;
+        Ok(Self {
+            components: vec![TemplateComponent::RelativePath { path }],
+        })
+    }
+
+    pub fn prepend(&mut self, prepend: Template, separator: &[u8]) {
+        let current_components = std::mem::take(&mut self.components);
+
+        self.components = prepend.components;
+        self.append_literal(separator);
+        self.components.extend(current_components);
+    }
+
+    pub fn append(&mut self, append: Template, separator: &[u8]) {
+        self.append_literal(separator);
+        self.components.extend(append.components);
+    }
+
+    pub fn append_literal(&mut self, literal: &[u8]) {
+        if literal.is_empty() {
+            return;
+        }
+
+        if let Some(TemplateComponent::Literal { value }) = self.components.last_mut() {
+            value.extend_from_slice(literal.as_ref());
+        } else {
+            self.components.push(TemplateComponent::Literal {
+                value: literal.to_vec(),
+            });
+        }
+    }
+
     pub fn to_os_string(
         &self,
         program: &Path,
@@ -105,7 +215,7 @@ impl Template {
 }
 
 #[serde_with::serde_as]
-#[derive(Debug, serde::Serialize, serde::Deserialize, bincode::Encode, bincode::Decode)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, bincode::Encode, bincode::Decode)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "type")]
 pub enum TemplateComponent {
@@ -130,10 +240,14 @@ pub enum TemplateComponent {
 pub enum RunnableTemplateError {
     #[error("invalid UTF-8 in runnable template: {0}")]
     Utf8Error(#[from] bstr::Utf8Error),
+    #[error("invalid path in runnable template")]
+    PathError,
     #[error("invalid program path")]
     InvalidProgramPath,
     #[error(transparent)]
     PackResourceDirError(#[from] brioche_resources::PackResourceDirError),
     #[error("resource not found: {resource}")]
     ResourceNotFound { resource: bstr::BString },
+    #[error("tried prepending and appending to env var")]
+    PrependAndAppend,
 }

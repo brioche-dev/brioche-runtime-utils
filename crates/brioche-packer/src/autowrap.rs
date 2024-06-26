@@ -1,6 +1,6 @@
 use std::{
-    collections::{HashSet, VecDeque},
-    io::Read as _,
+    collections::{HashMap, HashSet, VecDeque},
+    io::{BufRead as _, Read as _},
     path::{Path, PathBuf},
 };
 
@@ -62,12 +62,61 @@ struct ScriptArgs {
     script_enable: bool,
     #[arg(long = "script-packed-executable")]
     script_packed_executable: PathBuf,
+    #[arg(long = "script-env-clear")]
+    script_env_clear: bool,
+    #[arg(long = "script-env-separator", default_value = ":")]
+    script_env_separator: String,
+    #[arg(long = "script-env", value_parser = parse_env_value)]
+    script_env: Vec<ScriptEnv>,
+    #[arg(long = "script-env-path", value_parser = parse_env_value)]
+    script_env_path: Vec<ScriptEnv>,
+    #[arg(long = "script-env-path-relative", value_parser = parse_env_value)]
+    script_env_path_relative: Vec<ScriptEnv>,
 }
 
 #[derive(Debug, Clone, clap::Parser)]
 struct RewrapArgs {
     #[arg(long = "rewrap-enable")]
     rewrap_enable: bool,
+}
+
+#[derive(Debug, Clone)]
+struct ScriptEnv {
+    mode: ScriptEnvMode,
+    name: String,
+    value: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ScriptEnvMode {
+    Clear,
+    Set,
+    Prepend,
+    Append,
+}
+
+fn parse_env_value(s: &str) -> eyre::Result<ScriptEnv> {
+    let (mode, rest) = s
+        .split_once('=')
+        .ok_or_else(|| eyre::eyre!("expected env value to use the format MODE=NAME[=value]"))?;
+    let (name, value) = match rest.split_once('=') {
+        Some((name, value)) => (name, Some(value)),
+        None => (rest, None),
+    };
+
+    let mode = match mode {
+        "clear" => ScriptEnvMode::Clear,
+        "set" => ScriptEnvMode::Set,
+        "prepend" => ScriptEnvMode::Prepend,
+        "append" => ScriptEnvMode::Append,
+        _ => eyre::bail!("expected env value mode to be one of clear, set, prepend, or append"),
+    };
+
+    Ok(ScriptEnv {
+        mode,
+        name: name.to_string(),
+        value: value.map(|value| value.to_string()),
+    })
 }
 
 pub fn autowrap(args: &AutowrapArgs) -> eyre::Result<()> {
@@ -113,7 +162,10 @@ struct AutowrapContext<'a> {
     all_resource_dirs: Vec<PathBuf>,
     link_dependencies: Vec<PathBuf>,
     link_dependency_library_paths: Vec<PathBuf>,
+    link_dependency_paths: Vec<PathBuf>,
     skip_libraries: HashSet<&'a str>,
+    script_env: HashMap<String, runnable_core::EnvValue>,
+    script_env_resource_paths: Vec<PathBuf>,
 }
 
 fn autowrap_context(args: &AutowrapArgs) -> eyre::Result<AutowrapContext> {
@@ -131,7 +183,10 @@ fn autowrap_context(args: &AutowrapArgs) -> eyre::Result<AutowrapContext> {
     link_dependencies.extend(args.link_dependencies.iter().cloned());
 
     let mut link_dependency_library_paths = vec![];
+    let mut link_dependency_paths = vec![];
     for link_dep in &link_dependencies {
+        // Add $LIBRARY_PATH directories from symlinks under
+        // brioche-env.d/env/LIBRARY_PATH
         let library_path_env_dir = link_dep
             .join("brioche-env.d")
             .join("env")
@@ -163,6 +218,43 @@ fn autowrap_context(args: &AutowrapArgs) -> eyre::Result<AutowrapContext> {
         }
     }
 
+    for link_dep in &link_dependencies {
+        // Add $PATH directories from symlinks under brioche-env.d/env/PATH
+        let path_env_dir = link_dep.join("brioche-env.d").join("env").join("PATH");
+        let path_env_dir_entries = match std::fs::read_dir(&path_env_dir) {
+            Ok(entries) => entries,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                continue;
+            }
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("failed to read directory {:?}", path_env_dir));
+            }
+        };
+        for entry in path_env_dir_entries {
+            let entry = entry?;
+            eyre::ensure!(
+                entry.metadata()?.is_symlink(),
+                "expected {:?} to be a symlink",
+                entry.path()
+            );
+
+            let entry_path = entry
+                .path()
+                .canonicalize()
+                .with_context(|| format!("failed to canonicalize path {:?}", entry.path()))?;
+            link_dependency_paths.push(entry_path);
+        }
+    }
+
+    for link_dep in &link_dependencies {
+        // Add bin/ to $PATH if it exists
+        let link_dep_bin = link_dep.join("bin");
+        if link_dep_bin.is_dir() {
+            link_dependency_paths.push(link_dep_bin);
+        }
+    }
+
     let skip_libraries = args
         .dynamic_linking_args
         .skip_libraries
@@ -170,13 +262,100 @@ fn autowrap_context(args: &AutowrapArgs) -> eyre::Result<AutowrapContext> {
         .map(|lib| &**lib)
         .collect();
 
+    let mut script_env_resource_paths = vec![];
+    let mut script_env_templates = vec![];
+    for env in &args.script_args.script_env {
+        let value = env
+            .value
+            .as_ref()
+            .map(|value| runnable_core::Template::from_literal(value.as_bytes().to_vec()));
+
+        script_env_templates.push((env.mode, env.name.clone(), value));
+    }
+    for env in &args.script_args.script_env_path {
+        let value = match &env.value {
+            Some(value) => {
+                let resource_path = crate::resources::add_named_resource_directory(
+                    &resource_dir,
+                    Path::new(value),
+                    &env.name,
+                )?;
+                script_env_resource_paths.push(resource_path.clone());
+                let template = runnable_core::Template::from_resource_path(resource_path)?;
+                Some(template)
+            }
+            None => None,
+        };
+
+        script_env_templates.push((env.mode, env.name.clone(), value));
+    }
+    for env in &args.script_args.script_env_path_relative {
+        let value = match &env.value {
+            Some(value) => {
+                let template = runnable_core::Template::from_relative_path(value.into())?;
+                Some(template)
+            }
+            None => None,
+        };
+
+        script_env_templates.push((env.mode, env.name.clone(), value));
+    }
+
+    let mut script_env = HashMap::new();
+    let separator = args.script_args.script_env_separator.as_bytes();
+    for (mode, name, value) in script_env_templates {
+        match mode {
+            ScriptEnvMode::Clear => {
+                eyre::ensure!(value.is_none(), "unexpected value for env {name:?}");
+                script_env.insert(name.clone(), runnable_core::EnvValue::Clear);
+            }
+            ScriptEnvMode::Set => {
+                let value = value.ok_or_else(|| eyre::eyre!("expected value for env {name:?}"))?;
+                script_env.insert(name, runnable_core::EnvValue::Set { value });
+            }
+            ScriptEnvMode::Prepend => {
+                let value = value.ok_or_else(|| eyre::eyre!("expected value for env {name:?}"))?;
+
+                match script_env.entry(name.clone()) {
+                    std::collections::hash_map::Entry::Occupied(mut entry) => {
+                        entry.get_mut().prepend(value, separator)?;
+                    }
+                    std::collections::hash_map::Entry::Vacant(entry) => {
+                        entry.insert(runnable_core::EnvValue::Prepend {
+                            value,
+                            separator: separator.to_vec(),
+                        });
+                    }
+                }
+            }
+            ScriptEnvMode::Append => {
+                let value = value.ok_or_else(|| eyre::eyre!("expected value for env {name:?}"))?;
+
+                match script_env.entry(name) {
+                    std::collections::hash_map::Entry::Occupied(mut entry) => {
+                        entry.get_mut().append(value, separator)?;
+                    }
+                    std::collections::hash_map::Entry::Vacant(entry) => {
+                        entry.insert(runnable_core::EnvValue::Prepend {
+                            value,
+                            separator: separator.to_vec(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
     Ok(AutowrapContext {
         args,
         resource_dir,
         all_resource_dirs,
         link_dependencies,
         link_dependency_library_paths,
+        link_dependency_paths,
         skip_libraries,
+        script_env,
+        script_env_resource_paths,
     })
 }
 
@@ -364,7 +543,99 @@ fn autowrap_script(ctx: &AutowrapContext, path: &Path) -> eyre::Result<bool> {
         return Ok(false);
     }
 
-    eyre::bail!("tried to wrap script {path:?}, but script wrapping is not yet implemented");
+    let script_file = std::fs::File::open(path)?;
+    let mut script_file = std::io::BufReader::new(script_file);
+    let mut shebang = [0; 2];
+    let Ok(()) = script_file.read_exact(&mut shebang) else {
+        return Ok(false);
+    };
+    if shebang != *b"#!" {
+        return Ok(false);
+    }
+
+    let mut shebang_line = String::new();
+    script_file.read_line(&mut shebang_line)?;
+
+    let shebang_line = shebang_line.trim();
+    let shebang_parts = shebang_line.split_once(|c: char| c.is_ascii_whitespace());
+    let (command_path, arg) = match shebang_parts {
+        Some((command_path, arg)) => (command_path.trim(), arg.trim()),
+        None => (shebang_line, ""),
+    };
+
+    let mut arg = Some(arg).filter(|arg| !arg.is_empty());
+    let mut command_name = command_path
+        .split(|c: char| matches!(c, '/' | '\\'))
+        .last()
+        .unwrap_or(command_path);
+
+    if command_name == "env" {
+        command_name = arg.ok_or_eyre("expected argument for env script")?;
+        arg = None;
+    }
+    let mut command = None;
+    for link_dependency_path in &ctx.link_dependency_paths {
+        if link_dependency_path.join(command_name).is_file() {
+            command = Some(link_dependency_path.join(command_name));
+            break;
+        }
+    }
+
+    let command = command.ok_or_else(|| eyre::eyre!("could not find command {command_name:?}"))?;
+    let command_resource = add_named_blob_from(ctx, &command)?;
+    let script_resource = add_named_blob_from(ctx, path)?;
+
+    let resource_paths = [command_resource.clone(), script_resource.clone()]
+        .into_iter()
+        .chain(ctx.script_env_resource_paths.iter().cloned())
+        .map(|path| {
+            Vec::<u8>::from_path_buf(path).map_err(|_| eyre::eyre!("invalid resource path"))
+        })
+        .collect::<eyre::Result<Vec<_>>>()?;
+
+    let command = runnable_core::Template::from_resource_path(command_resource)?;
+    let env = ctx
+        .script_env
+        .iter()
+        .map(|(name, value)| (name.clone(), value.clone()))
+        .collect();
+    let clear_env = ctx.args.script_args.script_env_clear;
+
+    let mut args = vec![];
+    if let Some(arg) = arg {
+        args.push(runnable_core::ArgValue::Arg {
+            value: runnable_core::Template::from_literal(arg.into()),
+        });
+    }
+    args.push(runnable_core::ArgValue::Arg {
+        value: runnable_core::Template::from_resource_path(script_resource)?,
+    });
+    args.push(runnable_core::ArgValue::Rest);
+
+    let runnable_pack = runnable_core::Runnable {
+        command,
+        args,
+        env,
+        clear_env,
+    };
+    let pack = brioche_pack::Pack::Metadata {
+        resource_paths,
+        format: runnable_core::FORMAT.to_string(),
+        metadata: serde_json::to_vec(&runnable_pack)?,
+    };
+
+    let packed_exec_path = &ctx.args.script_args.script_packed_executable;
+    let mut packed_exec = std::fs::File::open(packed_exec_path)
+        .with_context(|| format!("failed to open packed executable {packed_exec_path:?}"))?;
+
+    let mut output =
+        std::fs::File::create(path).with_context(|| format!("failed to create file {path:?}"))?;
+    std::io::copy(&mut packed_exec, &mut output)
+        .with_context(|| format!("failed to copy packed executable to {path:?}"))?;
+    brioche_pack::inject_pack(output, &pack)
+        .with_context(|| format!("failed to inject pack into {path:?}"))?;
+
+    Ok(true)
 }
 
 fn autowrap_rewrap(ctx: &AutowrapContext, path: &Path) -> eyre::Result<bool> {
