@@ -299,12 +299,12 @@ fn autowrap_dynamic_binary(ctx: &AutowrapContext, path: &Path) -> eyre::Result<b
         runtime_library_dirs: vec![],
     };
 
-    let mut packed_exec = std::fs::File::open(
-        &ctx.args
-            .dynamic_binary_args
-            .dynamic_binary_packed_executable,
-    )
-    .with_context(|| format!("failed to open packed executable {path:?}"))?;
+    let packed_exec_path = &ctx
+        .args
+        .dynamic_binary_args
+        .dynamic_binary_packed_executable;
+    let mut packed_exec = std::fs::File::open(packed_exec_path)
+        .with_context(|| format!("failed to open packed executable {packed_exec_path:?}"))?;
     let mut output =
         std::fs::File::create(path).with_context(|| format!("failed to create file {path:?}"))?;
     std::io::copy(&mut packed_exec, &mut output)
