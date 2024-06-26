@@ -238,23 +238,17 @@ dependencies = [
 name = "brioche-packer"
 version = "0.1.0"
 dependencies = [
- "blake3",
  "brioche-autowrap",
  "brioche-pack",
  "brioche-resources",
  "bstr",
  "clap",
  "color-eyre",
- "copy_dir",
  "eyre",
  "globset",
  "goblin 0.8.2",
- "pathdiff",
  "runnable-core",
  "serde_json",
- "thiserror",
- "tick-encoding",
- "ulid",
  "walkdir",
 ]
 
@@ -264,9 +258,12 @@ version = "0.1.0"
 dependencies = [
  "blake3",
  "bstr",
+ "copy_dir",
  "pathdiff",
  "thiserror",
+ "tick-encoding",
  "ulid",
+ "walkdir",
 ]
 
 [[package]]

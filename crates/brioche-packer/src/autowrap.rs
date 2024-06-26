@@ -275,7 +275,7 @@ fn autowrap_context(args: &AutowrapArgs) -> eyre::Result<AutowrapContext> {
     for env in &args.script_args.script_env_path {
         let value = match &env.value {
             Some(value) => {
-                let resource_path = crate::resources::add_named_resource_directory(
+                let resource_path = brioche_resources::add_named_resource_directory(
                     &resource_dir,
                     Path::new(value),
                     &env.name,
