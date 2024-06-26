@@ -52,7 +52,7 @@ pub unsafe fn entrypoint(argc: libc::c_int, argv: *const *const libc::c_char) ->
 fn run(args: &[&CStr], env_vars: &[&CStr]) -> Result<(), PackedError> {
     let path = std::env::current_exe()?;
     let parent_path = path.parent().ok_or(PackedError::InvalidPath)?;
-    let resource_dirs = brioche_pack::find_resource_dirs(&path, true)?;
+    let resource_dirs = brioche_resources::find_resource_dirs(&path, true)?;
     let mut program = std::fs::File::open(&path)?;
     let pack = brioche_pack::extract_pack(&mut program)?;
 
@@ -66,11 +66,11 @@ fn run(args: &[&CStr], env_vars: &[&CStr]) -> Result<(), PackedError> {
             let interpreter = interpreter
                 .to_path()
                 .map_err(|_| PackedError::InvalidPath)?;
-            let interpreter = brioche_pack::find_in_resource_dirs(&resource_dirs, interpreter)
+            let interpreter = brioche_resources::find_in_resource_dirs(&resource_dirs, interpreter)
                 .ok_or(PackedError::ResourceNotFound)?;
 
             let program = program.to_path().map_err(|_| PackedError::InvalidPath)?;
-            let program = brioche_pack::find_in_resource_dirs(&resource_dirs, program)
+            let program = brioche_resources::find_in_resource_dirs(&resource_dirs, program)
                 .ok_or(PackedError::ResourceNotFound)?;
             let program = program.canonicalize()?;
             let mut exec = userland_execve::ExecOptions::new(&interpreter);
@@ -93,8 +93,9 @@ fn run(args: &[&CStr], env_vars: &[&CStr]) -> Result<(), PackedError> {
                 let library_dir = library_dir
                     .to_path()
                     .map_err(|_| PackedError::InvalidPath)?;
-                let library_dir = brioche_pack::find_in_resource_dirs(&resource_dirs, library_dir)
-                    .ok_or(PackedError::ResourceNotFound)?;
+                let library_dir =
+                    brioche_resources::find_in_resource_dirs(&resource_dirs, library_dir)
+                        .ok_or(PackedError::ResourceNotFound)?;
                 resolved_library_dirs.push(library_dir);
             }
 
@@ -158,7 +159,7 @@ fn run(args: &[&CStr], env_vars: &[&CStr]) -> Result<(), PackedError> {
 enum PackedError {
     IoError(#[from] std::io::Error),
     ExtractPackError(#[from] brioche_pack::ExtractPackError),
-    PackResourceDirError(#[from] brioche_pack::PackResourceDirError),
+    PackResourceDirError(#[from] brioche_resources::PackResourceDirError),
     InvalidPath,
     ResourceNotFound,
 }
@@ -185,11 +186,13 @@ fn error_summary(error: &PackedError) -> &'static str {
             brioche_pack::ExtractPackError::InvalidPack(_) => "failed to parse pack: bincode error",
         },
         PackedError::PackResourceDirError(error) => match error {
-            brioche_pack::PackResourceDirError::NotFound => "brioche pack resource dir not found",
-            brioche_pack::PackResourceDirError::DepthLimitReached => {
+            brioche_resources::PackResourceDirError::NotFound => {
+                "brioche pack resource dir not found"
+            }
+            brioche_resources::PackResourceDirError::DepthLimitReached => {
                 "reached depth limit while searching for brioche pack resource dir"
             }
-            brioche_pack::PackResourceDirError::IoError(_) => {
+            brioche_resources::PackResourceDirError::IoError(_) => {
                 "error while searching for brioche pack resource dir: io error"
             }
         },

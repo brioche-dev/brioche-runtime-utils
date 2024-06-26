@@ -73,9 +73,9 @@ fn run() -> Result<ExitCode, LdError> {
     let autowrap_mode = match std::env::var("BRIOCHE_LD_AUTOWRAP").as_deref() {
         Ok("false") => Mode::AutowrapDisabled,
         _ => {
-            let resource_dir = brioche_pack::find_output_resource_dir(&output_path)
+            let resource_dir = brioche_resources::find_output_resource_dir(&output_path)
                 .map_err(LdError::ResourceDirError)?;
-            let all_resource_dirs = brioche_pack::find_resource_dirs(&current_exe, true)
+            let all_resource_dirs = brioche_resources::find_resource_dirs(&current_exe, true)
                 .map_err(LdError::ResourceDirError)?;
             Mode::AutowrapEnabled {
                 resource_dir,
@@ -106,7 +106,7 @@ fn run() -> Result<ExitCode, LdError> {
             resource_dir,
             all_resource_dirs,
         } => {
-            brioche_pack::autowrap::autowrap(brioche_pack::autowrap::AutowrapOptions {
+            brioche_autowrap::autowrap(brioche_autowrap::AutowrapOptions {
                 program_path: &output_path,
                 packed_exec_path: &packed_path,
                 resource_dir: &resource_dir,
@@ -130,7 +130,7 @@ fn run() -> Result<ExitCode, LdError> {
 #[derive(Debug, thiserror::Error)]
 enum LdError {
     #[error("error wrapping binary: {0}")]
-    AutowrapError(#[from] brioche_pack::autowrap::AutowrapError),
+    AutowrapError(#[from] brioche_autowrap::AutowrapError),
     #[error("invalid arg")]
     InvalidArg,
     #[error("invalid path")]
@@ -146,9 +146,9 @@ enum LdError {
     #[error("{0}")]
     GoblinError(#[from] goblin::error::Error),
     #[error("error when finding resource dir")]
-    ResourceDirError(#[from] brioche_pack::PackResourceDirError),
+    ResourceDirError(#[from] brioche_resources::PackResourceDirError),
     #[error("error writing packed program")]
     InjectPackError(#[from] brioche_pack::InjectPackError),
     #[error("error adding blob: {0}")]
-    AddBlobError(#[from] brioche_pack::resources::AddBlobError),
+    AddBlobError(#[from] brioche_resources::AddBlobError),
 }

@@ -70,20 +70,18 @@ fn run() -> Result<(), PackerError> {
         } => {
             for program in &programs {
                 let resource_dir =
-                    brioche_pack::find_output_resource_dir(program).map_err(|error| {
+                    brioche_resources::find_output_resource_dir(program).map_err(|error| {
                         PackerError::PackResourceDir {
                             program: program.clone(),
                             error,
                         }
                     })?;
-                let all_resource_dirs =
-                    brioche_pack::find_resource_dirs(program, true).map_err(|error| {
-                        PackerError::PackResourceDir {
-                            program: program.clone(),
-                            error,
-                        }
+                let all_resource_dirs = brioche_resources::find_resource_dirs(program, true)
+                    .map_err(|error| PackerError::PackResourceDir {
+                        program: program.clone(),
+                        error,
                     })?;
-                brioche_pack::autowrap::autowrap(brioche_pack::autowrap::AutowrapOptions {
+                brioche_autowrap::autowrap(brioche_autowrap::AutowrapOptions {
                     program_path: program,
                     packed_exec_path: &packed_exec,
                     resource_dir: &resource_dir,
@@ -130,12 +128,12 @@ enum PackerError {
     PackResourceDir {
         program: PathBuf,
         #[source]
-        error: brioche_pack::PackResourceDirError,
+        error: brioche_resources::PackResourceDirError,
     },
     #[error("error wrapping {program}: {error}")]
     Autowrap {
         program: PathBuf,
         #[source]
-        error: brioche_pack::autowrap::AutowrapError,
+        error: brioche_autowrap::AutowrapError,
     },
 }

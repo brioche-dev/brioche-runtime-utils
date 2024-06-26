@@ -90,11 +90,11 @@ impl Template {
                 TemplateComponent::Resource { resource } => {
                     let resource_subpath = resource.to_path()?;
                     let resource_path =
-                        brioche_pack::find_in_resource_dirs(resource_dirs, resource_subpath)
+                        brioche_resources::find_in_resource_dirs(resource_dirs, resource_subpath)
                             .ok_or_else(|| {
-                                let resource = bstr::BString::new(resource.clone());
-                                RunnableTemplateError::ResourceNotFound { resource }
-                            })?;
+                            let resource = bstr::BString::new(resource.clone());
+                            RunnableTemplateError::ResourceNotFound { resource }
+                        })?;
                     os_string.push(resource_path);
                 }
             }
@@ -133,7 +133,7 @@ pub enum RunnableTemplateError {
     #[error("invalid program path")]
     InvalidProgramPath,
     #[error(transparent)]
-    PackResourceDirError(#[from] brioche_pack::PackResourceDirError),
+    PackResourceDirError(#[from] brioche_resources::PackResourceDirError),
     #[error("resource not found: {resource}")]
     ResourceNotFound { resource: bstr::BString },
 }

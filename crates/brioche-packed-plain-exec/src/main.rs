@@ -22,7 +22,7 @@ fn run() -> Result<(), PackedError> {
         .ok_or_else(|| PackedError::InvalidPath {
             path: program_path.clone(),
         })?;
-    let resource_dirs = brioche_pack::find_resource_dirs(&program_path, true)?;
+    let resource_dirs = brioche_resources::find_resource_dirs(&program_path, true)?;
     let mut program = std::fs::File::open(&program_path)?;
     let pack = brioche_pack::extract_pack(&mut program)?;
 
@@ -40,7 +40,7 @@ fn run() -> Result<(), PackedError> {
                 .map_err(|_| PackedError::InvalidPathBytes {
                     path: interpreter.clone().into(),
                 })?;
-            let interpreter = brioche_pack::find_in_resource_dirs(&resource_dirs, interpreter)
+            let interpreter = brioche_resources::find_in_resource_dirs(&resource_dirs, interpreter)
                 .ok_or_else(|| PackedError::ResourceNotFound {
                     resource: interpreter.to_owned(),
                 })?;
@@ -66,10 +66,11 @@ fn run() -> Result<(), PackedError> {
                         .map_err(|_| PackedError::InvalidPathBytes {
                             path: library_dir.clone().into(),
                         })?;
-                let library_dir = brioche_pack::find_in_resource_dirs(&resource_dirs, library_dir)
-                    .ok_or_else(|| PackedError::ResourceNotFound {
-                        resource: library_dir.to_owned(),
-                    })?;
+                let library_dir =
+                    brioche_resources::find_in_resource_dirs(&resource_dirs, library_dir)
+                        .ok_or_else(|| PackedError::ResourceNotFound {
+                            resource: library_dir.to_owned(),
+                        })?;
                 resolved_library_dirs.push(library_dir);
             }
 
@@ -121,11 +122,9 @@ fn run() -> Result<(), PackedError> {
                 .map_err(|_| PackedError::InvalidPathBytes {
                     path: program.clone().into(),
                 })?;
-            let program =
-                brioche_pack::find_in_resource_dirs(&resource_dirs, program).ok_or_else(|| {
-                    PackedError::ResourceNotFound {
-                        resource: program.to_owned(),
-                    }
+            let program = brioche_resources::find_in_resource_dirs(&resource_dirs, program)
+                .ok_or_else(|| PackedError::ResourceNotFound {
+                    resource: program.to_owned(),
                 })?;
             let program = program.canonicalize()?;
             command.arg(program);
@@ -244,7 +243,7 @@ enum PackedError {
     #[error(transparent)]
     ExtractPackError(#[from] brioche_pack::ExtractPackError),
     #[error(transparent)]
-    PackResourceDirError(#[from] brioche_pack::PackResourceDirError),
+    PackResourceDirError(#[from] brioche_resources::PackResourceDirError),
     #[error(transparent)]
     RunnableTemplateError(#[from] runnable_core::RunnableTemplateError),
     #[error("tried to pass remaining arguments more than once")]

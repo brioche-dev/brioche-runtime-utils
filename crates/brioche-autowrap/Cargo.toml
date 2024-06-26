@@ -1,14 +1,11 @@
 [package]
-name = "runnable-core"
+name = "brioche-autowrap"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bincode = "2.0.0-rc.3"
 brioche-pack = { workspace = true }
 brioche-resources = { path = "../brioche-resources" }
 bstr = "1.9.1"
-serde = { version = "1.0.203", features = ["derive"] }
-serde_with = "3.8.1"
+goblin = "0.8.2"
 thiserror = "1.0.61"
-tick-encoding = "0.1.2"

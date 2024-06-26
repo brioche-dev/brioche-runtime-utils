@@ -1,0 +1,11 @@
+[package]
+name = "brioche-resources"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+blake3 = "1.5.1"
+bstr = "1.9.1"
+pathdiff = "0.2.1"
+thiserror = "1.0.61"
+ulid = "1.1.2"

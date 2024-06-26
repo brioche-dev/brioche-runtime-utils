@@ -129,10 +129,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "brioche-autowrap"
+version = "0.1.0"
+dependencies = [
+ "brioche-pack",
+ "brioche-resources",
+ "bstr",
+ "goblin 0.8.2",
+ "thiserror",
+]
+
+[[package]]
 name = "brioche-ld"
 version = "0.1.1"
 dependencies = [
+ "brioche-autowrap",
  "brioche-pack",
+ "brioche-resources",
  "bstr",
  "goblin 0.7.1",
  "thiserror",
@@ -141,16 +154,14 @@ dependencies = [
 [[package]]
 name = "brioche-pack"
 version = "0.1.1"
-source = "git+https://github.com/brioche-dev/brioche.git#d82dfbff5f34f71e037466b11d3dde7ba75257f0"
+source = "git+https://github.com/brioche-dev/brioche.git#82b257fbb460791e2dcb4471de30b27629581ac1"
 dependencies = [
  "bincode",
  "blake3",
  "bstr",
- "clap",
  "goblin 0.7.1",
  "pathdiff",
  "serde",
- "serde_json",
  "serde_with",
  "thiserror",
  "tick-encoding",
@@ -162,6 +173,7 @@ name = "brioche-packed-plain-exec"
 version = "0.1.1"
 dependencies = [
  "brioche-pack",
+ "brioche-resources",
  "bstr",
  "libc",
  "runnable-core",
@@ -175,6 +187,7 @@ version = "0.1.1"
 dependencies = [
  "bincode",
  "brioche-pack",
+ "brioche-resources",
  "bstr",
  "cfg-if",
  "libc",
@@ -186,10 +199,23 @@ dependencies = [
 name = "brioche-packer"
 version = "0.1.0"
 dependencies = [
+ "brioche-autowrap",
  "brioche-pack",
+ "brioche-resources",
  "clap",
  "serde_json",
  "thiserror",
+]
+
+[[package]]
+name = "brioche-resources"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "bstr",
+ "pathdiff",
+ "thiserror",
+ "ulid",
 ]
 
 [[package]]
@@ -614,6 +640,7 @@ version = "0.1.0"
 dependencies = [
  "bincode",
  "brioche-pack",
+ "brioche-resources",
  "bstr",
  "serde",
  "serde_with",
