@@ -90,7 +90,9 @@ struct ScriptEnv {
 #[derive(Debug, Clone, Copy)]
 enum ScriptEnvMode {
     Clear,
+    Inherit,
     Set,
+    Fallback,
     Prepend,
     Append,
 }
@@ -106,7 +108,9 @@ fn parse_env_value(s: &str) -> eyre::Result<ScriptEnv> {
 
     let mode = match mode {
         "clear" => ScriptEnvMode::Clear,
+        "inherit" => ScriptEnvMode::Inherit,
         "set" => ScriptEnvMode::Set,
+        "fallback" => ScriptEnvMode::Fallback,
         "prepend" => ScriptEnvMode::Prepend,
         "append" => ScriptEnvMode::Append,
         _ => eyre::bail!("expected env value mode to be one of clear, set, prepend, or append"),
@@ -308,6 +312,23 @@ fn autowrap_context(args: &AutowrapArgs) -> eyre::Result<AutowrapContext> {
             ScriptEnvMode::Clear => {
                 eyre::ensure!(value.is_none(), "unexpected value for env {name:?}");
                 script_env.insert(name.clone(), runnable_core::EnvValue::Clear);
+            }
+            ScriptEnvMode::Inherit => {
+                eyre::ensure!(value.is_none(), "unexpected value for env {name:?}");
+
+                script_env.insert(name.clone(), runnable_core::EnvValue::Inherit);
+            }
+            ScriptEnvMode::Fallback => {
+                let value = value.ok_or_else(|| eyre::eyre!("expected value for env {name:?}"))?;
+
+                match script_env.entry(name.clone()) {
+                    std::collections::hash_map::Entry::Occupied(mut entry) => {
+                        entry.get_mut().fallback(value);
+                    }
+                    std::collections::hash_map::Entry::Vacant(entry) => {
+                        entry.insert(runnable_core::EnvValue::Fallback { value });
+                    }
+                }
             }
             ScriptEnvMode::Set => {
                 let value = value.ok_or_else(|| eyre::eyre!("expected value for env {name:?}"))?;

@@ -40,8 +40,13 @@ pub enum ArgValue {
 #[serde(tag = "type")]
 pub enum EnvValue {
     Clear,
+    Inherit,
     #[serde(rename_all = "camelCase")]
     Set {
+        value: Template,
+    },
+    #[serde(rename_all = "camelCase")]
+    Fallback {
         value: Template,
     },
     #[serde(rename_all = "camelCase")]
@@ -59,6 +64,28 @@ pub enum EnvValue {
 }
 
 impl EnvValue {
+    pub fn fallback(&mut self, fallback_value: Template) {
+        match self {
+            EnvValue::Clear => {
+                *self = EnvValue::Set {
+                    value: fallback_value,
+                };
+            }
+            EnvValue::Inherit => {
+                *self = EnvValue::Fallback {
+                    value: fallback_value,
+                };
+            }
+            EnvValue::Set { value } => {
+                value.fallback(fallback_value);
+            }
+            EnvValue::Fallback { value } => {
+                value.fallback(fallback_value);
+            }
+            EnvValue::Prepend { .. } | EnvValue::Append { .. } => {}
+        }
+    }
+
     pub fn prepend(
         &mut self,
         prepend_value: Template,
@@ -71,8 +98,24 @@ impl EnvValue {
                 };
                 Ok(())
             }
+            EnvValue::Inherit => {
+                *self = EnvValue::Prepend {
+                    value: prepend_value,
+                    separator: separator.to_vec(),
+                };
+                Ok(())
+            }
             EnvValue::Set { value } => {
                 value.prepend(prepend_value, separator);
+                Ok(())
+            }
+            EnvValue::Fallback { value } => {
+                let mut value = std::mem::take(value);
+                value.prepend(prepend_value, separator);
+                *self = EnvValue::Prepend {
+                    value,
+                    separator: separator.to_vec(),
+                };
                 Ok(())
             }
             EnvValue::Prepend {
@@ -98,8 +141,24 @@ impl EnvValue {
                 };
                 Ok(())
             }
+            EnvValue::Inherit => {
+                *self = EnvValue::Append {
+                    value: append_value,
+                    separator: separator.to_vec(),
+                };
+                Ok(())
+            }
             EnvValue::Set { value } => {
                 value.append(append_value, separator);
+                Ok(())
+            }
+            EnvValue::Fallback { value } => {
+                let mut value = std::mem::take(value);
+                value.append(append_value, separator);
+                *self = EnvValue::Append {
+                    value,
+                    separator: separator.to_vec(),
+                };
                 Ok(())
             }
             EnvValue::Prepend { .. } => Err(RunnableTemplateError::PrependAndAppend),
@@ -149,6 +208,10 @@ impl Template {
         })
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.components.iter().all(|component| component.is_empty())
+    }
+
     pub fn prepend(&mut self, prepend: Template, separator: &[u8]) {
         let current_components = std::mem::take(&mut self.components);
 
@@ -160,6 +223,12 @@ impl Template {
     pub fn append(&mut self, append: Template, separator: &[u8]) {
         self.append_literal(separator);
         self.components.extend(append.components);
+    }
+
+    pub fn fallback(&mut self, fallback: Template) {
+        if self.is_empty() {
+            *self = fallback;
+        }
     }
 
     pub fn append_literal(&mut self, literal: &[u8]) {
@@ -234,6 +303,15 @@ pub enum TemplateComponent {
         #[serde_as(as = "TickEncoded")]
         resource: Vec<u8>,
     },
+}
+
+impl TemplateComponent {
+    fn is_empty(&self) -> bool {
+        match self {
+            Self::Literal { value } => value.is_empty(),
+            Self::RelativePath { .. } | Self::Resource { .. } => false,
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
