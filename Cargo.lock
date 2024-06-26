@@ -184,16 +184,14 @@ dependencies = [
 [[package]]
 name = "brioche-pack"
 version = "0.1.1"
-source = "git+https://github.com/brioche-dev/brioche.git#d82dfbff5f34f71e037466b11d3dde7ba75257f0"
+source = "git+https://github.com/brioche-dev/brioche.git#82b257fbb460791e2dcb4471de30b27629581ac1"
 dependencies = [
  "bincode",
  "blake3",
  "bstr",
- "clap",
  "goblin 0.7.1",
  "pathdiff",
  "serde",
- "serde_json",
  "serde_with",
  "thiserror",
  "tick-encoding",
