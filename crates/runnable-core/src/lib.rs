@@ -85,116 +85,6 @@ pub enum EnvValue {
     },
 }
 
-impl EnvValue {
-    pub fn fallback(&mut self, fallback_value: Template) {
-        match self {
-            EnvValue::Clear => {
-                *self = EnvValue::Set {
-                    value: fallback_value,
-                };
-            }
-            EnvValue::Inherit => {
-                *self = EnvValue::Fallback {
-                    value: fallback_value,
-                };
-            }
-            EnvValue::Set { value } => {
-                value.fallback(fallback_value);
-            }
-            EnvValue::Fallback { value } => {
-                value.fallback(fallback_value);
-            }
-            EnvValue::Prepend { .. } | EnvValue::Append { .. } => {}
-        }
-    }
-
-    pub fn prepend(
-        &mut self,
-        prepend_value: Template,
-        separator: &[u8],
-    ) -> Result<(), RunnableTemplateError> {
-        match self {
-            EnvValue::Clear => {
-                *self = EnvValue::Set {
-                    value: prepend_value,
-                };
-                Ok(())
-            }
-            EnvValue::Inherit => {
-                *self = EnvValue::Prepend {
-                    value: prepend_value,
-                    separator: separator.to_vec(),
-                };
-                Ok(())
-            }
-            EnvValue::Set { value } => {
-                value.prepend(prepend_value, separator);
-                Ok(())
-            }
-            EnvValue::Fallback { value } => {
-                let mut value = std::mem::take(value);
-                value.prepend(prepend_value, separator);
-                *self = EnvValue::Prepend {
-                    value,
-                    separator: separator.to_vec(),
-                };
-                Ok(())
-            }
-            EnvValue::Prepend {
-                value,
-                separator: _,
-            } => {
-                value.prepend(prepend_value, separator);
-                Ok(())
-            }
-            EnvValue::Append { .. } => Err(RunnableTemplateError::PrependAndAppend),
-        }
-    }
-
-    pub fn append(
-        &mut self,
-        append_value: Template,
-        separator: &[u8],
-    ) -> Result<(), RunnableTemplateError> {
-        match self {
-            EnvValue::Clear => {
-                *self = EnvValue::Set {
-                    value: append_value,
-                };
-                Ok(())
-            }
-            EnvValue::Inherit => {
-                *self = EnvValue::Append {
-                    value: append_value,
-                    separator: separator.to_vec(),
-                };
-                Ok(())
-            }
-            EnvValue::Set { value } => {
-                value.append(append_value, separator);
-                Ok(())
-            }
-            EnvValue::Fallback { value } => {
-                let mut value = std::mem::take(value);
-                value.append(append_value, separator);
-                *self = EnvValue::Append {
-                    value,
-                    separator: separator.to_vec(),
-                };
-                Ok(())
-            }
-            EnvValue::Prepend { .. } => Err(RunnableTemplateError::PrependAndAppend),
-            EnvValue::Append {
-                value,
-                separator: _,
-            } => {
-                value.append(append_value, separator);
-                Ok(())
-            }
-        }
-    }
-}
-
 #[serde_with::serde_as]
 #[derive(
     Debug,
@@ -228,50 +118,6 @@ impl Template {
         Ok(Self {
             components: vec![TemplateComponent::Resource { resource }],
         })
-    }
-
-    pub fn from_relative_path(path: PathBuf) -> Result<Self, RunnableTemplateError> {
-        let path = Vec::<u8>::from_path_buf(path).map_err(|_| RunnableTemplateError::PathError)?;
-        Ok(Self {
-            components: vec![TemplateComponent::RelativePath { path }],
-        })
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.components.iter().all(|component| component.is_empty())
-    }
-
-    pub fn prepend(&mut self, prepend: Template, separator: &[u8]) {
-        let current_components = std::mem::take(&mut self.components);
-
-        self.components = prepend.components;
-        self.append_literal(separator);
-        self.components.extend(current_components);
-    }
-
-    pub fn append(&mut self, append: Template, separator: &[u8]) {
-        self.append_literal(separator);
-        self.components.extend(append.components);
-    }
-
-    pub fn fallback(&mut self, fallback: Template) {
-        if self.is_empty() {
-            *self = fallback;
-        }
-    }
-
-    pub fn append_literal(&mut self, literal: &[u8]) {
-        if literal.is_empty() {
-            return;
-        }
-
-        if let Some(TemplateComponent::Literal { value }) = self.components.last_mut() {
-            value.extend_from_slice(literal.as_ref());
-        } else {
-            self.components.push(TemplateComponent::Literal {
-                value: literal.to_vec(),
-            });
-        }
     }
 
     pub fn to_os_string(
@@ -340,15 +186,6 @@ pub enum TemplateComponent {
         #[serde_as(as = "TickEncoded")]
         resource: Vec<u8>,
     },
-}
-
-impl TemplateComponent {
-    fn is_empty(&self) -> bool {
-        match self {
-            Self::Literal { value } => value.is_empty(),
-            Self::RelativePath { .. } | Self::Resource { .. } => false,
-        }
-    }
 }
 
 #[derive(Debug, thiserror::Error)]
