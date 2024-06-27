@@ -14,5 +14,7 @@ eyre = "0.6.12"
 globset = "0.4.14"
 goblin = "0.8.2"
 runnable-core = { path = "../runnable-core" }
+serde = { version = "1.0.203", features = ["derive"] }
 serde_json = { version = "1.0.108" }
+serde_with = "3.8.1"
 walkdir = "2.5.0"

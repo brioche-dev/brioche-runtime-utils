@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use bstr::{ByteSlice as _, ByteVec as _};
 use encoding::TickEncoded;
 
-mod encoding;
+pub mod encoding;
 
 pub const FORMAT: &str = "application/vnd.brioche.runnable-v0.1.0+json";
 

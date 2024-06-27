@@ -4,150 +4,78 @@ use std::{
     path::{Path, PathBuf},
 };
 
+pub mod template;
+
 use bstr::{ByteSlice as _, ByteVec as _};
 use eyre::{Context as _, OptionExt as _};
 
-#[derive(Debug, Clone, clap::Parser)]
-pub struct AutowrapArgs {
-    recipe_path: PathBuf,
-    #[arg(long)]
-    quiet: bool,
-    #[arg(long = "path")]
-    paths: Vec<String>,
-    #[arg(long = "glob")]
-    globs: Vec<String>,
-    #[arg(long = "link-dependency")]
-    link_dependencies: Vec<PathBuf>,
-    #[arg(long = "self-dependency")]
-    self_dependency: bool,
-    #[command(flatten)]
-    dynamic_linking_args: DynamicLinkingArgs,
-    #[command(flatten)]
-    dynamic_binary_args: DynamicBinaryArgs,
-    #[command(flatten)]
-    shared_library_args: SharedLibraryArgs,
-    #[command(flatten)]
-    script_args: ScriptArgs,
-    #[command(flatten)]
-    rewrap_args: RewrapArgs,
-}
-
-#[derive(Debug, Clone, clap::Parser)]
-struct DynamicLinkingArgs {
-    #[arg(long = "dynamic-linking-skip-library")]
-    skip_libraries: Vec<String>,
-    #[arg(long = "dynamic-linking-skip-unknown-libraries")]
-    skip_unknown_libraries: bool,
-}
-
-#[derive(Debug, Clone, clap::Parser)]
-struct DynamicBinaryArgs {
-    #[arg(long = "dynamic-binary-enable")]
-    dynamic_binary_enable: bool,
-    #[arg(long = "dynamic-binary-packed-executable")]
-    dynamic_binary_packed_executable: PathBuf,
-    #[arg(long = "dynamic-binary-extra-library")]
-    extra_libraries: Vec<String>,
-}
-
-#[derive(Debug, Clone, clap::Parser)]
-struct SharedLibraryArgs {
-    #[arg(long = "shared-library-enable")]
-    shared_library_enable: bool,
-}
-
-#[derive(Debug, Clone, clap::Parser)]
-struct ScriptArgs {
-    #[arg(long = "script-enable")]
-    script_enable: bool,
-    #[arg(long = "script-packed-executable")]
-    script_packed_executable: PathBuf,
-    #[arg(long = "script-env-clear")]
-    script_env_clear: bool,
-    #[arg(long = "script-env-separator", default_value = ":")]
-    script_env_separator: String,
-    #[arg(long = "script-env", value_parser = parse_env_value)]
-    script_env: Vec<ScriptEnv>,
-    #[arg(long = "script-env-path", value_parser = parse_env_value)]
-    script_env_path: Vec<ScriptEnv>,
-    #[arg(long = "script-env-path-relative", value_parser = parse_env_value)]
-    script_env_path_relative: Vec<ScriptEnv>,
-}
-
-#[derive(Debug, Clone, clap::Parser)]
-struct RewrapArgs {
-    #[arg(long = "rewrap-enable")]
-    rewrap_enable: bool,
+#[derive(Debug, Clone)]
+pub struct AutowrapConfig {
+    pub recipe_path: PathBuf,
+    pub paths: Vec<PathBuf>,
+    pub globs: Vec<String>,
+    pub quiet: bool,
+    pub link_dependencies: Vec<PathBuf>,
+    pub self_dependency: bool,
+    pub dynamic_binary: Option<DynamicBinaryConfig>,
+    pub shared_library: Option<SharedLibraryConfig>,
+    pub script: Option<ScriptConfig>,
+    pub rewrap: Option<RewrapConfig>,
 }
 
 #[derive(Debug, Clone)]
-struct ScriptEnv {
-    mode: ScriptEnvMode,
-    name: String,
-    value: Option<String>,
+pub struct DynamicLinkingConfig {
+    pub skip_libraries: HashSet<String>,
+    pub extra_libraries: Vec<String>,
+    pub skip_unknown_libraries: bool,
 }
 
-#[derive(Debug, Clone, Copy)]
-enum ScriptEnvMode {
-    Clear,
-    Inherit,
-    Set,
-    Fallback,
-    Prepend,
-    Append,
+#[derive(Debug, Clone)]
+pub struct DynamicBinaryConfig {
+    pub packed_executable: PathBuf,
+    pub dynamic_linking: DynamicLinkingConfig,
 }
 
-fn parse_env_value(s: &str) -> eyre::Result<ScriptEnv> {
-    let (mode, rest) = s
-        .split_once('=')
-        .ok_or_else(|| eyre::eyre!("expected env value to use the format MODE=NAME[=value]"))?;
-    let (name, value) = match rest.split_once('=') {
-        Some((name, value)) => (name, Some(value)),
-        None => (rest, None),
-    };
-
-    let mode = match mode {
-        "clear" => ScriptEnvMode::Clear,
-        "inherit" => ScriptEnvMode::Inherit,
-        "set" => ScriptEnvMode::Set,
-        "fallback" => ScriptEnvMode::Fallback,
-        "prepend" => ScriptEnvMode::Prepend,
-        "append" => ScriptEnvMode::Append,
-        _ => eyre::bail!("expected env value mode to be one of clear, set, prepend, or append"),
-    };
-
-    Ok(ScriptEnv {
-        mode,
-        name: name.to_string(),
-        value: value.map(|value| value.to_string()),
-    })
+#[derive(Debug, Clone)]
+pub struct SharedLibraryConfig {
+    pub dynamic_linking: DynamicLinkingConfig,
 }
 
-pub fn autowrap(args: &AutowrapArgs) -> eyre::Result<()> {
-    let ctx = autowrap_context(args)?;
+#[derive(Debug, Clone)]
+pub struct ScriptConfig {
+    pub packed_executable: PathBuf,
+    pub env: HashMap<String, runnable_core::EnvValue>,
+    pub clear_env: bool,
+}
 
-    for path in &args.paths {
-        let path = args.recipe_path.join(path);
+#[derive(Debug, Clone)]
+pub struct RewrapConfig {}
+
+pub fn autowrap(config: &AutowrapConfig) -> eyre::Result<()> {
+    let ctx = autowrap_context(config)?;
+
+    for path in &config.paths {
+        let path = config.recipe_path.join(path);
         let did_wrap = try_autowrap_path(&ctx, &path)?;
         eyre::ensure!(did_wrap, "failed to wrap path: {path:?}");
-        if !args.quiet {
+        if !config.quiet {
             println!("wrapped {}", path.display());
         }
     }
 
     let mut globs = globset::GlobSetBuilder::new();
-    for glob in &args.globs {
+    for glob in &config.globs {
         globs.add(globset::Glob::new(glob)?);
     }
 
     let globs = globs.build()?;
 
-    let walkdir = walkdir::WalkDir::new(&args.recipe_path);
+    let walkdir = walkdir::WalkDir::new(&config.recipe_path);
     for entry in walkdir {
         let entry = entry?;
         if globs.is_match(entry.path()) {
             let did_wrap = try_autowrap_path(&ctx, entry.path())?;
-            if !args.quiet {
+            if !config.quiet {
                 if did_wrap {
                     println!("wrapped {}", entry.path().display());
                 } else {
@@ -161,30 +89,27 @@ pub fn autowrap(args: &AutowrapArgs) -> eyre::Result<()> {
 }
 
 struct AutowrapContext<'a> {
-    args: &'a AutowrapArgs,
+    config: &'a AutowrapConfig,
     resource_dir: PathBuf,
     all_resource_dirs: Vec<PathBuf>,
     link_dependencies: Vec<PathBuf>,
     link_dependency_library_paths: Vec<PathBuf>,
     link_dependency_paths: Vec<PathBuf>,
-    skip_libraries: HashSet<&'a str>,
-    script_env: HashMap<String, runnable_core::EnvValue>,
-    script_env_resource_paths: Vec<PathBuf>,
 }
 
-fn autowrap_context(args: &AutowrapArgs) -> eyre::Result<AutowrapContext> {
+fn autowrap_context(config: &AutowrapConfig) -> eyre::Result<AutowrapContext> {
     // HACK: Workaround because finding a resource dir takes a program
     // path rather than a directory path, but then gets the parent path
-    let program = args.recipe_path.join("program");
+    let program = config.recipe_path.join("program");
 
     let resource_dir = brioche_resources::find_output_resource_dir(&program)?;
     let all_resource_dirs = brioche_resources::find_resource_dirs(&program, true)?;
 
     let mut link_dependencies = vec![];
-    if args.self_dependency {
-        link_dependencies.push(args.recipe_path.to_owned());
+    if config.self_dependency {
+        link_dependencies.push(config.recipe_path.to_owned());
     }
-    link_dependencies.extend(args.link_dependencies.iter().cloned());
+    link_dependencies.extend(config.link_dependencies.iter().cloned());
 
     let mut link_dependency_library_paths = vec![];
     let mut link_dependency_paths = vec![];
@@ -259,124 +184,13 @@ fn autowrap_context(args: &AutowrapArgs) -> eyre::Result<AutowrapContext> {
         }
     }
 
-    let skip_libraries = args
-        .dynamic_linking_args
-        .skip_libraries
-        .iter()
-        .map(|lib| &**lib)
-        .collect();
-
-    let mut script_env_resource_paths = vec![];
-    let mut script_env_templates = vec![];
-    for env in &args.script_args.script_env {
-        let value = env
-            .value
-            .as_ref()
-            .map(|value| runnable_core::Template::from_literal(value.as_bytes().to_vec()));
-
-        script_env_templates.push((env.mode, env.name.clone(), value));
-    }
-    for env in &args.script_args.script_env_path {
-        let value = match &env.value {
-            Some(value) => {
-                let resource_path = brioche_resources::add_named_resource_directory(
-                    &resource_dir,
-                    Path::new(value),
-                    &env.name,
-                )?;
-                script_env_resource_paths.push(resource_path.clone());
-                let template = runnable_core::Template::from_resource_path(resource_path)?;
-                Some(template)
-            }
-            None => None,
-        };
-
-        script_env_templates.push((env.mode, env.name.clone(), value));
-    }
-    for env in &args.script_args.script_env_path_relative {
-        let value = match &env.value {
-            Some(value) => {
-                let template = runnable_core::Template::from_relative_path(value.into())?;
-                Some(template)
-            }
-            None => None,
-        };
-
-        script_env_templates.push((env.mode, env.name.clone(), value));
-    }
-
-    let mut script_env = HashMap::new();
-    let separator = args.script_args.script_env_separator.as_bytes();
-    for (mode, name, value) in script_env_templates {
-        match mode {
-            ScriptEnvMode::Clear => {
-                eyre::ensure!(value.is_none(), "unexpected value for env {name:?}");
-                script_env.insert(name.clone(), runnable_core::EnvValue::Clear);
-            }
-            ScriptEnvMode::Inherit => {
-                eyre::ensure!(value.is_none(), "unexpected value for env {name:?}");
-
-                script_env.insert(name.clone(), runnable_core::EnvValue::Inherit);
-            }
-            ScriptEnvMode::Fallback => {
-                let value = value.ok_or_else(|| eyre::eyre!("expected value for env {name:?}"))?;
-
-                match script_env.entry(name.clone()) {
-                    std::collections::hash_map::Entry::Occupied(mut entry) => {
-                        entry.get_mut().fallback(value);
-                    }
-                    std::collections::hash_map::Entry::Vacant(entry) => {
-                        entry.insert(runnable_core::EnvValue::Fallback { value });
-                    }
-                }
-            }
-            ScriptEnvMode::Set => {
-                let value = value.ok_or_else(|| eyre::eyre!("expected value for env {name:?}"))?;
-                script_env.insert(name, runnable_core::EnvValue::Set { value });
-            }
-            ScriptEnvMode::Prepend => {
-                let value = value.ok_or_else(|| eyre::eyre!("expected value for env {name:?}"))?;
-
-                match script_env.entry(name.clone()) {
-                    std::collections::hash_map::Entry::Occupied(mut entry) => {
-                        entry.get_mut().prepend(value, separator)?;
-                    }
-                    std::collections::hash_map::Entry::Vacant(entry) => {
-                        entry.insert(runnable_core::EnvValue::Prepend {
-                            value,
-                            separator: separator.to_vec(),
-                        });
-                    }
-                }
-            }
-            ScriptEnvMode::Append => {
-                let value = value.ok_or_else(|| eyre::eyre!("expected value for env {name:?}"))?;
-
-                match script_env.entry(name) {
-                    std::collections::hash_map::Entry::Occupied(mut entry) => {
-                        entry.get_mut().append(value, separator)?;
-                    }
-                    std::collections::hash_map::Entry::Vacant(entry) => {
-                        entry.insert(runnable_core::EnvValue::Prepend {
-                            value,
-                            separator: separator.to_vec(),
-                        });
-                    }
-                }
-            }
-        }
-    }
-
     Ok(AutowrapContext {
-        args,
+        config,
         resource_dir,
         all_resource_dirs,
         link_dependencies,
         link_dependency_library_paths,
         link_dependency_paths,
-        skip_libraries,
-        script_env,
-        script_env_resource_paths,
     })
 }
 
@@ -427,9 +241,9 @@ enum AutowrapKind {
 }
 
 fn autowrap_dynamic_binary(ctx: &AutowrapContext, path: &Path) -> eyre::Result<bool> {
-    if !ctx.args.dynamic_binary_args.dynamic_binary_enable {
+    let Some(dynamic_binary_config) = &ctx.config.dynamic_binary else {
         return Ok(false);
-    }
+    };
 
     let contents = std::fs::read(path)?;
     let program_object = goblin::Object::parse(&contents)?;
@@ -468,10 +282,15 @@ fn autowrap_dynamic_binary(ctx: &AutowrapContext, path: &Path) -> eyre::Result<b
         .libraries
         .iter()
         .copied()
-        .filter(|library| !ctx.skip_libraries.contains(*library))
+        .filter(|library| {
+            !dynamic_binary_config
+                .dynamic_linking
+                .skip_libraries
+                .contains(*library)
+        })
         .chain(
-            ctx.args
-                .dynamic_binary_args
+            dynamic_binary_config
+                .dynamic_linking
                 .extra_libraries
                 .iter()
                 .map(|lib| &**lib),
@@ -479,7 +298,11 @@ fn autowrap_dynamic_binary(ctx: &AutowrapContext, path: &Path) -> eyre::Result<b
         .map(|lib| lib.to_string())
         .collect();
 
-    let library_dir_resource_paths = collect_all_library_dirs(ctx, needed_libraries)?;
+    let library_dir_resource_paths = collect_all_library_dirs(
+        ctx,
+        &dynamic_binary_config.dynamic_linking,
+        needed_libraries,
+    )?;
 
     let program = <Vec<u8>>::from_path_buf(program_resource_path)
         .map_err(|_| eyre::eyre!("invalid UTF-8 in path"))?;
@@ -499,10 +322,7 @@ fn autowrap_dynamic_binary(ctx: &AutowrapContext, path: &Path) -> eyre::Result<b
         runtime_library_dirs: vec![],
     };
 
-    let packed_exec_path = &ctx
-        .args
-        .dynamic_binary_args
-        .dynamic_binary_packed_executable;
+    let packed_exec_path = &dynamic_binary_config.packed_executable;
     let mut packed_exec = std::fs::File::open(packed_exec_path)
         .with_context(|| format!("failed to open packed executable {packed_exec_path:?}"))?;
     let mut output =
@@ -516,9 +336,9 @@ fn autowrap_dynamic_binary(ctx: &AutowrapContext, path: &Path) -> eyre::Result<b
 }
 
 fn autowrap_shared_library(ctx: &AutowrapContext, path: &Path) -> eyre::Result<bool> {
-    if !ctx.args.shared_library_args.shared_library_enable {
+    let Some(shared_library_config) = &ctx.config.shared_library else {
         return Ok(false);
-    }
+    };
 
     let contents = std::fs::read(path)?;
     let program_object = goblin::Object::parse(&contents)?;
@@ -531,10 +351,15 @@ fn autowrap_shared_library(ctx: &AutowrapContext, path: &Path) -> eyre::Result<b
         .libraries
         .iter()
         .copied()
-        .filter(|library| !ctx.skip_libraries.contains(*library))
+        .filter(|library| {
+            !shared_library_config
+                .dynamic_linking
+                .skip_libraries
+                .contains(*library)
+        })
         .chain(
-            ctx.args
-                .dynamic_binary_args
+            shared_library_config
+                .dynamic_linking
                 .extra_libraries
                 .iter()
                 .map(|lib| &**lib),
@@ -542,7 +367,11 @@ fn autowrap_shared_library(ctx: &AutowrapContext, path: &Path) -> eyre::Result<b
         .map(|lib| lib.to_string())
         .collect();
 
-    let library_dir_resource_paths = collect_all_library_dirs(ctx, needed_libraries)?;
+    let library_dir_resource_paths = collect_all_library_dirs(
+        ctx,
+        &shared_library_config.dynamic_linking,
+        needed_libraries,
+    )?;
 
     let library_dirs = library_dir_resource_paths
         .into_iter()
@@ -560,9 +389,9 @@ fn autowrap_shared_library(ctx: &AutowrapContext, path: &Path) -> eyre::Result<b
 }
 
 fn autowrap_script(ctx: &AutowrapContext, path: &Path) -> eyre::Result<bool> {
-    if !ctx.args.script_args.script_enable {
+    let Some(script_config) = &ctx.config.script else {
         return Ok(false);
-    }
+    };
 
     let script_file = std::fs::File::open(path)?;
     let mut script_file = std::io::BufReader::new(script_file);
@@ -606,21 +435,44 @@ fn autowrap_script(ctx: &AutowrapContext, path: &Path) -> eyre::Result<bool> {
     let command_resource = add_named_blob_from(ctx, &command)?;
     let script_resource = add_named_blob_from(ctx, path)?;
 
+    let env_resource_paths = script_config
+        .env
+        .values()
+        .filter_map(|value| match value {
+            runnable_core::EnvValue::Clear => None,
+            runnable_core::EnvValue::Inherit => None,
+            runnable_core::EnvValue::Set { value } => Some(value),
+            runnable_core::EnvValue::Fallback { value } => Some(value),
+            runnable_core::EnvValue::Prepend {
+                value,
+                separator: _,
+            } => Some(value),
+            runnable_core::EnvValue::Append {
+                value,
+                separator: _,
+            } => Some(value),
+        })
+        .flat_map(|template| &template.components)
+        .filter_map(|component| match component {
+            runnable_core::TemplateComponent::Literal { .. }
+            | runnable_core::TemplateComponent::RelativePath { .. } => None,
+            runnable_core::TemplateComponent::Resource { resource } => Some(
+                resource
+                    .to_path()
+                    .map_err(|_| eyre::eyre!("invalid resource path")),
+            ),
+        })
+        .collect::<eyre::Result<Vec<_>>>()?;
+
     let resource_paths = [command_resource.clone(), script_resource.clone()]
         .into_iter()
-        .chain(ctx.script_env_resource_paths.iter().cloned())
+        .chain(env_resource_paths.into_iter().map(|path| path.to_owned()))
         .map(|path| {
             Vec::<u8>::from_path_buf(path).map_err(|_| eyre::eyre!("invalid resource path"))
         })
         .collect::<eyre::Result<Vec<_>>>()?;
 
     let command = runnable_core::Template::from_resource_path(command_resource)?;
-    let env = ctx
-        .script_env
-        .iter()
-        .map(|(name, value)| (name.clone(), value.clone()))
-        .collect();
-    let clear_env = ctx.args.script_args.script_env_clear;
 
     let mut args = vec![];
     if let Some(arg) = arg {
@@ -633,11 +485,17 @@ fn autowrap_script(ctx: &AutowrapContext, path: &Path) -> eyre::Result<bool> {
     });
     args.push(runnable_core::ArgValue::Rest);
 
+    let env = script_config
+        .env
+        .iter()
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
+
     let runnable_pack = runnable_core::Runnable {
         command,
         args,
         env,
-        clear_env,
+        clear_env: script_config.clear_env,
     };
     let pack = brioche_pack::Pack::Metadata {
         resource_paths,
@@ -645,7 +503,7 @@ fn autowrap_script(ctx: &AutowrapContext, path: &Path) -> eyre::Result<bool> {
         metadata: serde_json::to_vec(&runnable_pack)?,
     };
 
-    let packed_exec_path = &ctx.args.script_args.script_packed_executable;
+    let packed_exec_path = &script_config.packed_executable;
     let mut packed_exec = std::fs::File::open(packed_exec_path)
         .with_context(|| format!("failed to open packed executable {packed_exec_path:?}"))?;
 
@@ -660,15 +518,16 @@ fn autowrap_script(ctx: &AutowrapContext, path: &Path) -> eyre::Result<bool> {
 }
 
 fn autowrap_rewrap(ctx: &AutowrapContext, path: &Path) -> eyre::Result<bool> {
-    if !ctx.args.rewrap_args.rewrap_enable {
+    let Some(_) = &ctx.config.rewrap else {
         return Ok(false);
-    }
+    };
 
     eyre::bail!("tried to rewrap {path:?}, but rewrapping is not yet implemented");
 }
 
 fn collect_all_library_dirs(
     ctx: &AutowrapContext,
+    dynamic_linking_config: &DynamicLinkingConfig,
     mut needed_libraries: VecDeque<String>,
 ) -> eyre::Result<Vec<PathBuf>> {
     let mut library_search_paths = ctx.link_dependency_library_paths.clone();
@@ -685,7 +544,7 @@ fn collect_all_library_dirs(
         // Find the path to the library
         let library_path = find_library(&library_search_paths, &library_name)?;
         let Some(library_path) = library_path else {
-            if ctx.args.dynamic_linking_args.skip_unknown_libraries {
+            if dynamic_linking_config.skip_unknown_libraries {
                 continue;
             } else {
                 eyre::bail!("library not found: {library_name:?}");
@@ -697,7 +556,10 @@ fn collect_all_library_dirs(
         // Don't add the library if it's been skipped. We still do everything
         // else so we can add transitive dependencies even if a library has
         // been skipped
-        if !ctx.skip_libraries.contains(&*library_name) {
+        if !dynamic_linking_config
+            .skip_libraries
+            .contains(&*library_name)
+        {
             // Add the library to the resource directory
             let library_resource_path = add_named_blob_from(ctx, &library_path)
                 .with_context(|| format!("failed to add resource for library {library_path:?}"))?;

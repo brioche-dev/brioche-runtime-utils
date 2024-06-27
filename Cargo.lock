@@ -248,7 +248,9 @@ dependencies = [
  "globset",
  "goblin 0.8.2",
  "runnable-core",
+ "serde",
  "serde_json",
+ "serde_with",
  "walkdir",
 ]
 

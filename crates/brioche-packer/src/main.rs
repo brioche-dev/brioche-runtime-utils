@@ -1,6 +1,7 @@
 use std::{os::unix::fs::OpenOptionsExt as _, path::PathBuf, process::ExitCode};
 
 use clap::Parser;
+use eyre::Context as _;
 
 mod autowrap;
 
@@ -15,10 +16,38 @@ enum Args {
         #[arg(long)]
         pack: String,
     },
-    Autowrap(autowrap::AutowrapArgs),
+    Autowrap(AutowrapArgs),
     Read {
         program: PathBuf,
     },
+}
+
+impl std::str::FromStr for AutowrapTemplateValue {
+    type Err = eyre::Error;
+
+    fn from_str(s: &str) -> eyre::Result<Self> {
+        let (name, value) = s
+            .split_once('=')
+            .ok_or_else(|| eyre::eyre!("expected `<NAME>=<TYPE>:<VALUE>` format"))?;
+        let (ty, value) = value
+            .split_once(':')
+            .ok_or_else(|| eyre::eyre!("expected `<NAME>=<TYPE>:<VALUE>` format"))?;
+
+        let value = match ty {
+            "path" => {
+                let value = PathBuf::from(value);
+                autowrap::template::TemplateVariableValue::Path(value)
+            }
+            _ => {
+                eyre::bail!("unknown type {ty:?}, expected \"path\"");
+            }
+        };
+
+        Ok(Self {
+            name: name.to_string(),
+            value,
+        })
+    }
 }
 
 fn main() -> ExitCode {
@@ -56,7 +85,9 @@ fn run() -> eyre::Result<()> {
 
             brioche_pack::inject_pack(&mut output, &pack)?;
         }
-        Args::Autowrap(args) => autowrap::autowrap(&args)?,
+        Args::Autowrap(args) => {
+            run_autowrap(args)?;
+        }
         Args::Read { program } => {
             let mut program = std::fs::File::open(program)?;
             let pack = brioche_pack::extract_pack(&mut program)?;
@@ -65,6 +96,52 @@ fn run() -> eyre::Result<()> {
             println!();
         }
     }
+
+    Ok(())
+}
+
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug, Parser)]
+struct AutowrapArgs {
+    recipe_path: PathBuf,
+
+    #[arg(long)]
+    config: String,
+
+    #[arg(long = "var", value_parser)]
+    variables: Vec<AutowrapTemplateValue>,
+}
+
+#[derive(Debug, Clone)]
+struct AutowrapTemplateValue {
+    name: String,
+    value: autowrap::template::TemplateVariableValue,
+}
+
+fn run_autowrap(args: AutowrapArgs) -> eyre::Result<()> {
+    let config_template: autowrap::template::AutowrapConfigTemplate =
+        serde_json::from_str(&args.config).context("invalid config value")?;
+    let variables = args
+        .variables
+        .into_iter()
+        .map(|variable| (variable.name, variable.value))
+        .collect();
+
+    // HACK: Workaround because finding a resource dir takes a program
+    // path rather than a directory path, but then gets the parent path
+    let program = args.recipe_path.join("program");
+
+    let resource_dir = brioche_resources::find_output_resource_dir(&program)?;
+    let all_resource_dirs = brioche_resources::find_resource_dirs(&program, true)?;
+
+    let ctx = &autowrap::template::AutowrapConfigTemplateContext {
+        variables,
+        resource_dir,
+        all_resource_dirs,
+    };
+    let config = config_template.build(ctx, args.recipe_path)?;
+
+    autowrap::autowrap(&config)?;
 
     Ok(())
 }
