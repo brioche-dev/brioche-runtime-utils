@@ -20,7 +20,7 @@ impl AutowrapConfigTemplateContext {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AutowrapConfigTemplate {
     #[serde(default)]
@@ -93,7 +93,7 @@ impl AutowrapConfigTemplate {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 struct DynamicLinkingConfigTemplate {
     #[serde(default)]
@@ -122,7 +122,7 @@ impl DynamicLinkingConfigTemplate {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DynamicBinaryConfigTemplate {
     packed_executable: TemplatePath,
@@ -151,7 +151,7 @@ impl DynamicBinaryConfigTemplate {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SharedLibraryConfigTemplate {
     #[serde(flatten)]
@@ -168,7 +168,7 @@ impl SharedLibraryConfigTemplate {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ScriptConfigTemplate {
     packed_executable: TemplatePath,
@@ -205,7 +205,7 @@ impl ScriptConfigTemplate {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RewrapConfigTemplate {}
 
@@ -217,7 +217,7 @@ impl RewrapConfigTemplate {
 }
 
 #[serde_with::serde_as]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "type")]
 enum EnvValueTemplate {
@@ -274,7 +274,7 @@ impl EnvValueTemplate {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 struct EnvValueTemplateValue {
     components: Vec<EnvValueTemplateValueComponent>,
@@ -297,7 +297,7 @@ impl EnvValueTemplateValue {
 }
 
 #[serde_with::serde_as]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "type")]
 enum EnvValueTemplateValueComponent {
@@ -352,7 +352,7 @@ impl EnvValueTemplateValueComponent {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(untagged)]
 enum TemplatePath {
     Path(PathBuf),
@@ -373,7 +373,7 @@ impl TemplatePath {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TemplateVariable {
     variable: String,

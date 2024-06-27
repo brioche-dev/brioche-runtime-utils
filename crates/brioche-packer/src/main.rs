@@ -1,7 +1,7 @@
 use std::{os::unix::fs::OpenOptionsExt as _, path::PathBuf, process::ExitCode};
 
 use clap::Parser;
-use eyre::Context as _;
+use eyre::{Context as _, OptionExt as _};
 
 mod autowrap;
 
@@ -103,10 +103,14 @@ fn run() -> eyre::Result<()> {
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Parser)]
 struct AutowrapArgs {
-    recipe_path: PathBuf,
-
     #[arg(long)]
-    config: String,
+    schema: bool,
+
+    #[arg(required_unless_present = "schema")]
+    recipe_path: Option<PathBuf>,
+
+    #[arg(long, required_unless_present = "schema")]
+    config: Option<String>,
 
     #[arg(long = "var", value_parser)]
     variables: Vec<AutowrapTemplateValue>,
@@ -119,8 +123,26 @@ struct AutowrapTemplateValue {
 }
 
 fn run_autowrap(args: AutowrapArgs) -> eyre::Result<()> {
-    let config_template: autowrap::template::AutowrapConfigTemplate =
-        serde_json::from_str(&args.config).context("invalid config value")?;
+    if args.schema {
+        let schema = schemars::schema_for!(autowrap::template::AutowrapConfigTemplate);
+        serde_json::to_writer_pretty(std::io::stdout().lock(), &schema)?;
+        println!();
+        return Ok(());
+    }
+
+    let recipe_path = args.recipe_path.ok_or_eyre("missing RECIPE_PATH")?;
+    let config = args.config.ok_or_eyre("missing --config")?;
+
+    let config_template =
+        serde_json::from_str::<autowrap::template::AutowrapConfigTemplate>(&config);
+    let config_template = match config_template {
+        Ok(config_template) => config_template,
+        Err(err) => {
+            return Err(err)
+                .context("failed to parse config template (pass --schema to show schema)");
+        }
+    };
+
     let variables = args
         .variables
         .into_iter()
@@ -129,7 +151,7 @@ fn run_autowrap(args: AutowrapArgs) -> eyre::Result<()> {
 
     // HACK: Workaround because finding a resource dir takes a program
     // path rather than a directory path, but then gets the parent path
-    let program = args.recipe_path.join("program");
+    let program = recipe_path.join("program");
 
     let resource_dir = brioche_resources::find_output_resource_dir(&program)?;
     let all_resource_dirs = brioche_resources::find_resource_dirs(&program, true)?;
@@ -139,7 +161,7 @@ fn run_autowrap(args: AutowrapArgs) -> eyre::Result<()> {
         resource_dir,
         all_resource_dirs,
     };
-    let config = config_template.build(ctx, args.recipe_path)?;
+    let config = config_template.build(ctx, recipe_path)?;
 
     autowrap::autowrap(&config)?;
 

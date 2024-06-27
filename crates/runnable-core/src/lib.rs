@@ -8,7 +8,14 @@ pub mod encoding;
 pub const FORMAT: &str = "application/vnd.brioche.runnable-v0.1.0+json";
 
 #[serde_with::serde_as]
-#[derive(Debug, serde::Serialize, serde::Deserialize, bincode::Encode, bincode::Decode)]
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+    bincode::Encode,
+    bincode::Decode,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct Runnable {
     pub command: Template,
@@ -23,7 +30,14 @@ pub struct Runnable {
     pub clear_env: bool,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize, bincode::Encode, bincode::Decode)]
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+    bincode::Encode,
+    bincode::Decode,
+)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "type")]
 pub enum ArgValue {
@@ -35,7 +49,15 @@ pub enum ArgValue {
 }
 
 #[serde_with::serde_as]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, bincode::Encode, bincode::Decode)]
+#[derive(
+    Debug,
+    Clone,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+    bincode::Encode,
+    bincode::Decode,
+)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "type")]
 pub enum EnvValue {
@@ -175,7 +197,14 @@ impl EnvValue {
 
 #[serde_with::serde_as]
 #[derive(
-    Debug, Clone, Default, serde::Serialize, serde::Deserialize, bincode::Encode, bincode::Decode,
+    Debug,
+    Clone,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+    bincode::Encode,
+    bincode::Decode,
 )]
 #[serde(rename_all = "camelCase")]
 pub struct Template {
@@ -284,7 +313,15 @@ impl Template {
 }
 
 #[serde_with::serde_as]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, bincode::Encode, bincode::Decode)]
+#[derive(
+    Debug,
+    Clone,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+    bincode::Encode,
+    bincode::Decode,
+)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "type")]
 pub enum TemplateComponent {
