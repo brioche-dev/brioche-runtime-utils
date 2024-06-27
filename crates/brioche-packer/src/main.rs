@@ -154,12 +154,10 @@ fn run_autowrap(args: AutowrapArgs) -> eyre::Result<()> {
     let program = recipe_path.join("program");
 
     let resource_dir = brioche_resources::find_output_resource_dir(&program)?;
-    let all_resource_dirs = brioche_resources::find_resource_dirs(&program, true)?;
 
     let ctx = &autowrap::template::AutowrapConfigTemplateContext {
         variables,
         resource_dir,
-        all_resource_dirs,
     };
     let config = config_template.build(ctx, recipe_path)?;
 

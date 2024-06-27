@@ -9,7 +9,6 @@ use runnable_core::encoding::TickEncoded;
 pub struct AutowrapConfigTemplateContext {
     pub variables: HashMap<String, TemplateVariableValue>,
     pub resource_dir: PathBuf,
-    pub all_resource_dirs: Vec<PathBuf>,
 }
 
 impl AutowrapConfigTemplateContext {
