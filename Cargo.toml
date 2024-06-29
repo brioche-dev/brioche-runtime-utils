@@ -4,10 +4,9 @@ members = [ "crates/brioche-autowrap",
     "crates/brioche-ld",
     "crates/brioche-packed-plain-exec",
     "crates/brioche-packed-userland-exec",
-    "crates/brioche-packer", "crates/brioche-resources",
-    "crates/runnable",
+    "crates/brioche-packer",
+    "crates/brioche-resources",
     "crates/runnable-core",
-    "crates/start-runnable",
 ]
 
 [workspace.dependencies]

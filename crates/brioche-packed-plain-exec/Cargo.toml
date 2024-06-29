@@ -8,4 +8,6 @@ brioche-pack = { workspace = true }
 brioche-resources = { path = "../brioche-resources" }
 bstr = "1.8.0"
 libc = "0.2.151"
+runnable-core = { path = "../runnable-core" }
+serde_json = "1.0.117"
 thiserror = "1.0.51"
