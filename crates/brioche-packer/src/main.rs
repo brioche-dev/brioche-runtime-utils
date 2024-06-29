@@ -1,4 +1,4 @@
-use std::{path::PathBuf, process::ExitCode};
+use std::{os::unix::fs::OpenOptionsExt as _, path::PathBuf, process::ExitCode};
 
 use clap::Parser;
 
@@ -54,8 +54,15 @@ fn run() -> Result<(), PackerError> {
         } => {
             let pack = serde_json::from_str(&pack).map_err(PackerError::DeserializePack)?;
 
-            std::fs::copy(packed, &output)?;
-            let mut output = std::fs::OpenOptions::new().append(true).open(&output)?;
+            let mut packed = std::fs::File::open(packed)?;
+            let mut output = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .mode(0o777)
+                .open(output)?;
+
+            std::io::copy(&mut packed, &mut output)?;
 
             brioche_pack::inject_pack(&mut output, &pack)?;
         }
