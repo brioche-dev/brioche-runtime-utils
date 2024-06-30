@@ -51,7 +51,7 @@ impl AutowrapConfigTemplate {
         self,
         ctx: &AutowrapConfigTemplateContext,
         recipe_path: PathBuf,
-    ) -> eyre::Result<super::AutowrapConfig> {
+    ) -> eyre::Result<brioche_autowrap::AutowrapConfig> {
         let Self {
             paths,
             globs,
@@ -67,23 +67,47 @@ impl AutowrapConfigTemplate {
         let paths = paths
             .into_iter()
             .map(|path| path.build(ctx))
-            .collect::<eyre::Result<_>>()?;
-        let link_dependencies = link_dependencies
+            .collect::<eyre::Result<Vec<_>>>()?;
+        let mut link_dependencies = link_dependencies
             .into_iter()
             .map(|path| path.build(ctx))
-            .collect::<eyre::Result<_>>()?;
+            .collect::<eyre::Result<Vec<_>>>()?;
         let dynamic_binary = dynamic_binary.map(|opts| opts.build(ctx)).transpose()?;
         let shared_library = shared_library.map(|opts| opts.build(ctx)).transpose()?;
         let script = script.map(|opts| opts.build(ctx)).transpose()?;
         let rewrap = rewrap.map(|opts| opts.build());
 
-        Ok(super::AutowrapConfig {
-            recipe_path,
-            paths,
-            globs,
+        if self_dependency {
+            link_dependencies.insert(0, recipe_path.clone());
+        }
+
+        let inputs = if globs.is_empty() {
+            let paths = paths
+                .into_iter()
+                .map(|path| recipe_path.join(path))
+                .collect();
+            brioche_autowrap::AutowrapInputs::Paths(paths)
+        } else {
+            eyre::ensure!(paths.is_empty(), "cannot include both paths and globs");
+            brioche_autowrap::AutowrapInputs::Globs {
+                patterns: globs,
+                base_path: recipe_path.clone(),
+            }
+        };
+
+        // HACK: Workaround because finding a resource dir takes a program
+        // path rather than a directory path, but then gets the parent path
+        let program = recipe_path.join("program");
+
+        let resource_dir = brioche_resources::find_output_resource_dir(&program)?;
+        let all_resource_dirs = brioche_resources::find_resource_dirs(&program, true)?;
+
+        Ok(brioche_autowrap::AutowrapConfig {
+            resource_dir,
+            all_resource_dirs,
+            inputs,
             quiet,
             link_dependencies,
-            self_dependency,
             dynamic_binary,
             shared_library,
             script,
@@ -112,7 +136,7 @@ impl DynamicLinkingConfigTemplate {
     fn build(
         self,
         ctx: &AutowrapConfigTemplateContext,
-    ) -> eyre::Result<super::DynamicLinkingConfig> {
+    ) -> eyre::Result<brioche_autowrap::DynamicLinkingConfig> {
         let Self {
             library_paths,
             skip_libraries,
@@ -125,7 +149,7 @@ impl DynamicLinkingConfigTemplate {
             .map(|path| path.build(ctx))
             .collect::<eyre::Result<_>>()?;
 
-        Ok(super::DynamicLinkingConfig {
+        Ok(brioche_autowrap::DynamicLinkingConfig {
             library_paths,
             skip_libraries,
             extra_libraries,
@@ -147,7 +171,7 @@ impl DynamicBinaryConfigTemplate {
     fn build(
         self,
         ctx: &AutowrapConfigTemplateContext,
-    ) -> eyre::Result<super::DynamicBinaryConfig> {
+    ) -> eyre::Result<brioche_autowrap::DynamicBinaryConfig> {
         let Self {
             packed_executable,
             dynamic_linking,
@@ -156,7 +180,7 @@ impl DynamicBinaryConfigTemplate {
         let packed_executable = packed_executable.build(ctx)?;
         let dynamic_linking = dynamic_linking.build(ctx)?;
 
-        Ok(super::DynamicBinaryConfig {
+        Ok(brioche_autowrap::DynamicBinaryConfig {
             packed_executable,
             dynamic_linking,
         })
@@ -174,12 +198,12 @@ impl SharedLibraryConfigTemplate {
     fn build(
         self,
         ctx: &AutowrapConfigTemplateContext,
-    ) -> eyre::Result<super::SharedLibraryConfig> {
+    ) -> eyre::Result<brioche_autowrap::SharedLibraryConfig> {
         let Self { dynamic_linking } = self;
 
         let dynamic_linking = dynamic_linking.build(ctx)?;
 
-        Ok(super::SharedLibraryConfig { dynamic_linking })
+        Ok(brioche_autowrap::SharedLibraryConfig { dynamic_linking })
     }
 }
 
@@ -196,7 +220,10 @@ pub struct ScriptConfigTemplate {
 }
 
 impl ScriptConfigTemplate {
-    fn build(self, ctx: &AutowrapConfigTemplateContext) -> eyre::Result<super::ScriptConfig> {
+    fn build(
+        self,
+        ctx: &AutowrapConfigTemplateContext,
+    ) -> eyre::Result<brioche_autowrap::ScriptConfig> {
         let Self {
             packed_executable,
             env,
@@ -212,7 +239,7 @@ impl ScriptConfigTemplate {
             })
             .collect::<eyre::Result<_>>()?;
 
-        Ok(super::ScriptConfig {
+        Ok(brioche_autowrap::ScriptConfig {
             packed_executable,
             env,
             clear_env,
@@ -225,9 +252,9 @@ impl ScriptConfigTemplate {
 pub struct RewrapConfigTemplate {}
 
 impl RewrapConfigTemplate {
-    fn build(self) -> super::RewrapConfig {
+    fn build(self) -> brioche_autowrap::RewrapConfig {
         let Self {} = self;
-        super::RewrapConfig {}
+        brioche_autowrap::RewrapConfig {}
     }
 }
 

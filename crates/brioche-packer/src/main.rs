@@ -3,7 +3,7 @@ use std::{os::unix::fs::OpenOptionsExt as _, path::PathBuf, process::ExitCode};
 use clap::Parser;
 use eyre::{Context as _, OptionExt as _};
 
-mod autowrap;
+mod autowrap_template;
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Parser)]
@@ -36,7 +36,7 @@ impl std::str::FromStr for AutowrapTemplateValue {
         let value = match ty {
             "path" => {
                 let value = PathBuf::from(value);
-                autowrap::template::TemplateVariableValue::Path(value)
+                autowrap_template::TemplateVariableValue::Path(value)
             }
             _ => {
                 eyre::bail!("unknown type {ty:?}, expected \"path\"");
@@ -119,12 +119,12 @@ struct AutowrapArgs {
 #[derive(Debug, Clone)]
 struct AutowrapTemplateValue {
     name: String,
-    value: autowrap::template::TemplateVariableValue,
+    value: autowrap_template::TemplateVariableValue,
 }
 
 fn run_autowrap(args: AutowrapArgs) -> eyre::Result<()> {
     if args.schema {
-        let schema = schemars::schema_for!(autowrap::template::AutowrapConfigTemplate);
+        let schema = schemars::schema_for!(autowrap_template::AutowrapConfigTemplate);
         serde_json::to_writer_pretty(std::io::stdout().lock(), &schema)?;
         println!();
         return Ok(());
@@ -134,7 +134,7 @@ fn run_autowrap(args: AutowrapArgs) -> eyre::Result<()> {
     let config = args.config.ok_or_eyre("missing --config")?;
 
     let config_template =
-        serde_json::from_str::<autowrap::template::AutowrapConfigTemplate>(&config);
+        serde_json::from_str::<autowrap_template::AutowrapConfigTemplate>(&config);
     let config_template = match config_template {
         Ok(config_template) => config_template,
         Err(err) => {
@@ -155,13 +155,13 @@ fn run_autowrap(args: AutowrapArgs) -> eyre::Result<()> {
 
     let resource_dir = brioche_resources::find_output_resource_dir(&program)?;
 
-    let ctx = &autowrap::template::AutowrapConfigTemplateContext {
+    let ctx = &autowrap_template::AutowrapConfigTemplateContext {
         variables,
         resource_dir,
     };
     let config = config_template.build(ctx, recipe_path)?;
 
-    autowrap::autowrap(&config)?;
+    brioche_autowrap::autowrap(&config)?;
 
     Ok(())
 }

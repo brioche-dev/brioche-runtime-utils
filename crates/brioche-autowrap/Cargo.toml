@@ -7,5 +7,10 @@ edition = "2021"
 brioche-pack = { workspace = true }
 brioche-resources = { path = "../brioche-resources" }
 bstr = "1.9.1"
+eyre = "0.6.12"
+globset = "0.4.14"
 goblin = "0.8.2"
+runnable-core = { path = "../runnable-core" }
+serde_json = "1.0.118"
 thiserror = "1.0.61"
+walkdir = "2.5.0"
