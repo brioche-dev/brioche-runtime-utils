@@ -193,7 +193,7 @@ dependencies = [
 [[package]]
 name = "brioche-pack"
 version = "0.1.1"
-source = "git+https://github.com/brioche-dev/brioche.git#82b257fbb460791e2dcb4471de30b27629581ac1"
+source = "git+https://github.com/brioche-dev/brioche.git#9ce499cad0c9a7b692cbf5d2cea7d84fd52e8f8a"
 dependencies = [
  "bincode",
  "blake3",

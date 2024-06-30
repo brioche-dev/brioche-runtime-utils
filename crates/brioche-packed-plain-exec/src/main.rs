@@ -24,9 +24,9 @@ fn run() -> Result<(), PackedError> {
         })?;
     let resource_dirs = brioche_resources::find_resource_dirs(&program_path, true)?;
     let mut program = std::fs::File::open(&program_path)?;
-    let pack = brioche_pack::extract_pack(&mut program)?;
+    let extracted = brioche_pack::extract_pack(&mut program)?;
 
-    match pack {
+    match extracted.pack {
         brioche_pack::Pack::LdLinux {
             program,
             interpreter,

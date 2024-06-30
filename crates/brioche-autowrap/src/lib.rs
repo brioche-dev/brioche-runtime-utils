@@ -285,8 +285,9 @@ fn collect_all_library_dirs(
         };
         needed_libraries.extend(library_elf.libraries.iter().map(|lib| lib.to_string()));
 
-        if let Ok(library_pack) = brioche_pack::extract_pack(&library_file[..]) {
-            let library_dirs = match &library_pack {
+        let library_file_cursor = std::io::Cursor::new(&library_file[..]);
+        if let Ok(extracted_library) = brioche_pack::extract_pack(library_file_cursor) {
+            let library_dirs = match &extracted_library.pack {
                 brioche_pack::Pack::LdLinux { library_dirs, .. } => &library_dirs[..],
                 brioche_pack::Pack::Static { library_dirs } => &library_dirs[..],
                 brioche_pack::Pack::Metadata { .. } => &[],

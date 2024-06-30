@@ -90,9 +90,9 @@ fn run() -> eyre::Result<()> {
         }
         Args::Read { program } => {
             let mut program = std::fs::File::open(program)?;
-            let pack = brioche_pack::extract_pack(&mut program)?;
+            let extracted = brioche_pack::extract_pack(&mut program)?;
 
-            serde_json::to_writer_pretty(std::io::stdout().lock(), &pack)?;
+            serde_json::to_writer_pretty(std::io::stdout().lock(), &extracted.pack)?;
             println!();
         }
     }

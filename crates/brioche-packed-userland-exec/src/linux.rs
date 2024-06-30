@@ -54,9 +54,9 @@ fn run(args: &[&CStr], env_vars: &[&CStr]) -> Result<(), PackedError> {
     let parent_path = path.parent().ok_or(PackedError::InvalidPath)?;
     let resource_dirs = brioche_resources::find_resource_dirs(&path, true)?;
     let mut program = std::fs::File::open(&path)?;
-    let pack = brioche_pack::extract_pack(&mut program)?;
+    let extracted = brioche_pack::extract_pack(&mut program)?;
 
-    match pack {
+    match extracted.pack {
         brioche_pack::Pack::LdLinux {
             program,
             interpreter,
@@ -184,6 +184,7 @@ fn error_summary(error: &PackedError) -> &'static str {
                 "malformed marker at the end of the packed program"
             }
             brioche_pack::ExtractPackError::InvalidPack(_) => "failed to parse pack: bincode error",
+            brioche_pack::ExtractPackError::TryFromIntError(_) => "integer conversion error",
         },
         PackedError::PackResourceDirError(error) => match error {
             brioche_resources::PackResourceDirError::NotFound => {
