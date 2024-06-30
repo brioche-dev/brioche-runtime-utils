@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet, VecDeque},
-    io::{BufRead as _, Read as _},
+    io::{BufRead as _, Read as _, Write as _},
     path::{Path, PathBuf},
 };
 
@@ -56,7 +56,7 @@ pub fn autowrap(config: &AutowrapConfig) -> eyre::Result<()> {
 
     for path in &config.paths {
         let path = config.recipe_path.join(path);
-        let did_wrap = try_autowrap_path(&ctx, &path)?;
+        let did_wrap = try_autowrap_path(&ctx, &path, &path)?;
         eyre::ensure!(did_wrap, "failed to wrap path: {path:?}");
         if !config.quiet {
             println!("wrapped {}", path.display());
@@ -74,7 +74,7 @@ pub fn autowrap(config: &AutowrapConfig) -> eyre::Result<()> {
     for entry in walkdir {
         let entry = entry?;
         if globs.is_match(entry.path()) {
-            let did_wrap = try_autowrap_path(&ctx, entry.path())?;
+            let did_wrap = try_autowrap_path(&ctx, entry.path(), entry.path())?;
             if !config.quiet {
                 if did_wrap {
                     println!("wrapped {}", entry.path().display());
@@ -194,16 +194,20 @@ fn autowrap_context(config: &AutowrapConfig) -> eyre::Result<AutowrapContext> {
     })
 }
 
-fn try_autowrap_path(ctx: &AutowrapContext, path: &Path) -> eyre::Result<bool> {
-    let Some(kind) = autowrap_kind(path)? else {
+fn try_autowrap_path(
+    ctx: &AutowrapContext,
+    source_path: &Path,
+    output_path: &Path,
+) -> eyre::Result<bool> {
+    let Some(kind) = autowrap_kind(source_path)? else {
         return Ok(false);
     };
 
     match kind {
-        AutowrapKind::DynamicBinary => autowrap_dynamic_binary(ctx, path),
-        AutowrapKind::SharedLibrary => autowrap_shared_library(ctx, path),
-        AutowrapKind::Script => autowrap_script(ctx, path),
-        AutowrapKind::Rewrap => autowrap_rewrap(ctx, path),
+        AutowrapKind::DynamicBinary => autowrap_dynamic_binary(ctx, source_path, output_path),
+        AutowrapKind::SharedLibrary => autowrap_shared_library(ctx, source_path, output_path),
+        AutowrapKind::Script => autowrap_script(ctx, source_path, output_path),
+        AutowrapKind::Rewrap => autowrap_rewrap(ctx, source_path, output_path),
     }
 }
 
@@ -240,22 +244,29 @@ enum AutowrapKind {
     Rewrap,
 }
 
-fn autowrap_dynamic_binary(ctx: &AutowrapContext, path: &Path) -> eyre::Result<bool> {
+fn autowrap_dynamic_binary(
+    ctx: &AutowrapContext,
+    source_path: &Path,
+    output_path: &Path,
+) -> eyre::Result<bool> {
     let Some(dynamic_binary_config) = &ctx.config.dynamic_binary else {
         return Ok(false);
     };
 
-    let contents = std::fs::read(path)?;
+    let contents = std::fs::read(source_path)?;
     let program_object = goblin::Object::parse(&contents)?;
 
     let goblin::Object::Elf(program_object) = program_object else {
-        eyre::bail!("tried to wrap non-ELF dynamic binary: {}", path.display());
+        eyre::bail!(
+            "tried to wrap non-ELF dynamic binary: {}",
+            source_path.display()
+        );
     };
 
     let Some(interpreter) = program_object.interpreter else {
         eyre::bail!(
             "tried to wrap dynamic binary without an interpreter: {}",
-            path.display()
+            source_path.display()
         );
     };
     let relative_interpreter = interpreter.strip_prefix('/').ok_or_else(|| {
@@ -271,12 +282,13 @@ fn autowrap_dynamic_binary(ctx: &AutowrapContext, path: &Path) -> eyre::Result<b
         }
     }
 
-    let interpreter_path = interpreter_path
-        .ok_or_else(|| eyre::eyre!("could not find interpreter for dynamic binary: {path:?}"))?;
+    let interpreter_path = interpreter_path.ok_or_else(|| {
+        eyre::eyre!("could not find interpreter for dynamic binary: {source_path:?}")
+    })?;
     let interpreter_resource_path = add_named_blob_from(ctx, &interpreter_path)
         .with_context(|| format!("failed to add resource for interpreter {interpreter_path:?}"))?;
-    let program_resource_path = add_named_blob_from(ctx, path)
-        .with_context(|| format!("failed to add resource for program {path:?}"))?;
+    let program_resource_path = add_named_blob_from(ctx, source_path)
+        .with_context(|| format!("failed to add resource for program {source_path:?}"))?;
 
     let needed_libraries: VecDeque<_> = program_object
         .libraries
@@ -325,26 +337,33 @@ fn autowrap_dynamic_binary(ctx: &AutowrapContext, path: &Path) -> eyre::Result<b
     let packed_exec_path = &dynamic_binary_config.packed_executable;
     let mut packed_exec = std::fs::File::open(packed_exec_path)
         .with_context(|| format!("failed to open packed executable {packed_exec_path:?}"))?;
-    let mut output =
-        std::fs::File::create(path).with_context(|| format!("failed to create file {path:?}"))?;
+    let mut output = std::fs::File::create(output_path)
+        .with_context(|| format!("failed to create file {output_path:?}"))?;
     std::io::copy(&mut packed_exec, &mut output)
-        .with_context(|| format!("failed to copy packed executable to {path:?}"))?;
+        .with_context(|| format!("failed to copy packed executable to {output_path:?}"))?;
     brioche_pack::inject_pack(output, &pack)
-        .with_context(|| format!("failed to inject pack into {path:?}"))?;
+        .with_context(|| format!("failed to inject pack into {output_path:?}"))?;
 
     Ok(true)
 }
 
-fn autowrap_shared_library(ctx: &AutowrapContext, path: &Path) -> eyre::Result<bool> {
+fn autowrap_shared_library(
+    ctx: &AutowrapContext,
+    source_path: &Path,
+    output_path: &Path,
+) -> eyre::Result<bool> {
     let Some(shared_library_config) = &ctx.config.shared_library else {
         return Ok(false);
     };
 
-    let contents = std::fs::read(path)?;
+    let contents = std::fs::read(source_path)?;
     let program_object = goblin::Object::parse(&contents)?;
 
     let goblin::Object::Elf(program_object) = program_object else {
-        eyre::bail!("tried to wrap non-ELF dynamic binary: {}", path.display());
+        eyre::bail!(
+            "tried to wrap non-ELF dynamic binary: {}",
+            source_path.display()
+        );
     };
 
     let needed_libraries: VecDeque<_> = program_object
@@ -382,18 +401,28 @@ fn autowrap_shared_library(ctx: &AutowrapContext, path: &Path) -> eyre::Result<b
         .collect::<eyre::Result<Vec<_>>>()?;
     let pack = brioche_pack::Pack::Static { library_dirs };
 
-    let file = std::fs::OpenOptions::new().append(true).open(path)?;
+    let file = if source_path == output_path {
+        std::fs::OpenOptions::new().append(true).open(output_path)?
+    } else {
+        let mut new_file = std::fs::File::create(output_path)?;
+        new_file.write_all(&contents)?;
+        new_file
+    };
     brioche_pack::inject_pack(file, &pack)?;
 
     Ok(true)
 }
 
-fn autowrap_script(ctx: &AutowrapContext, path: &Path) -> eyre::Result<bool> {
+fn autowrap_script(
+    ctx: &AutowrapContext,
+    source_path: &Path,
+    output_path: &Path,
+) -> eyre::Result<bool> {
     let Some(script_config) = &ctx.config.script else {
         return Ok(false);
     };
 
-    let script_file = std::fs::File::open(path)?;
+    let script_file = std::fs::File::open(source_path)?;
     let mut script_file = std::io::BufReader::new(script_file);
     let mut shebang = [0; 2];
     let Ok(()) = script_file.read_exact(&mut shebang) else {
@@ -433,7 +462,7 @@ fn autowrap_script(ctx: &AutowrapContext, path: &Path) -> eyre::Result<bool> {
 
     let command = command.ok_or_else(|| eyre::eyre!("could not find command {command_name:?}"))?;
     let command_resource = add_named_blob_from(ctx, &command)?;
-    let script_resource = add_named_blob_from(ctx, path)?;
+    let script_resource = add_named_blob_from(ctx, source_path)?;
 
     let env_resource_paths = script_config
         .env
@@ -510,22 +539,26 @@ fn autowrap_script(ctx: &AutowrapContext, path: &Path) -> eyre::Result<bool> {
     let mut packed_exec = std::fs::File::open(packed_exec_path)
         .with_context(|| format!("failed to open packed executable {packed_exec_path:?}"))?;
 
-    let mut output =
-        std::fs::File::create(path).with_context(|| format!("failed to create file {path:?}"))?;
+    let mut output = std::fs::File::create(output_path)
+        .with_context(|| format!("failed to create file {output_path:?}"))?;
     std::io::copy(&mut packed_exec, &mut output)
-        .with_context(|| format!("failed to copy packed executable to {path:?}"))?;
+        .with_context(|| format!("failed to copy packed executable to {output_path:?}"))?;
     brioche_pack::inject_pack(output, &pack)
-        .with_context(|| format!("failed to inject pack into {path:?}"))?;
+        .with_context(|| format!("failed to inject pack into {output_path:?}"))?;
 
     Ok(true)
 }
 
-fn autowrap_rewrap(ctx: &AutowrapContext, path: &Path) -> eyre::Result<bool> {
+fn autowrap_rewrap(
+    ctx: &AutowrapContext,
+    source_path: &Path,
+    _output_path: &Path,
+) -> eyre::Result<bool> {
     let Some(_) = &ctx.config.rewrap else {
         return Ok(false);
     };
 
-    eyre::bail!("tried to rewrap {path:?}, but rewrapping is not yet implemented");
+    eyre::bail!("tried to rewrap {source_path:?}, but rewrapping is not yet implemented");
 }
 
 fn collect_all_library_dirs(
