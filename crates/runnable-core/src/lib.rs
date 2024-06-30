@@ -28,6 +28,9 @@ pub struct Runnable {
     pub env: Vec<(String, EnvValue)>,
 
     pub clear_env: bool,
+
+    #[serde(default)]
+    pub source: Option<RunnableSource>,
 }
 
 #[derive(
@@ -186,6 +189,52 @@ pub enum TemplateComponent {
         #[serde_as(as = "TickEncoded")]
         resource: Vec<u8>,
     },
+}
+#[serde_with::serde_as]
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+    bincode::Encode,
+    bincode::Decode,
+)]
+#[serde(rename_all = "camelCase")]
+pub struct RunnableSource {
+    pub path: RunnablePath,
+}
+
+#[serde_with::serde_as]
+#[derive(
+    Debug,
+    Clone,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+    bincode::Encode,
+    bincode::Decode,
+)]
+#[serde(rename_all = "snake_case")]
+#[serde(tag = "type")]
+pub enum RunnablePath {
+    #[serde(rename_all = "camelCase")]
+    RelativePath {
+        #[serde_as(as = "TickEncoded")]
+        path: Vec<u8>,
+    },
+    #[serde(rename_all = "camelCase")]
+    Resource {
+        #[serde_as(as = "TickEncoded")]
+        resource: Vec<u8>,
+    },
+}
+
+impl RunnablePath {
+    pub fn from_resource_path(resource_path: PathBuf) -> Result<Self, RunnableTemplateError> {
+        let resource = Vec::<u8>::from_path_buf(resource_path)
+            .map_err(|_| RunnableTemplateError::PathError)?;
+        Ok(Self::Resource { resource })
+    }
 }
 
 #[derive(Debug, thiserror::Error)]

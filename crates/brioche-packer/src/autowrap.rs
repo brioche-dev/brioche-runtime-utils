@@ -481,7 +481,7 @@ fn autowrap_script(ctx: &AutowrapContext, path: &Path) -> eyre::Result<bool> {
         });
     }
     args.push(runnable_core::ArgValue::Arg {
-        value: runnable_core::Template::from_resource_path(script_resource)?,
+        value: runnable_core::Template::from_resource_path(script_resource.clone())?,
     });
     args.push(runnable_core::ArgValue::Rest);
 
@@ -496,6 +496,9 @@ fn autowrap_script(ctx: &AutowrapContext, path: &Path) -> eyre::Result<bool> {
         args,
         env,
         clear_env: script_config.clear_env,
+        source: Some(runnable_core::RunnableSource {
+            path: runnable_core::RunnablePath::from_resource_path(script_resource)?,
+        }),
     };
     let pack = brioche_pack::Pack::Metadata {
         resource_paths,
