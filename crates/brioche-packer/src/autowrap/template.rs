@@ -73,7 +73,7 @@ impl AutowrapConfigTemplate {
             .map(|path| path.build(ctx))
             .collect::<eyre::Result<_>>()?;
         let dynamic_binary = dynamic_binary.map(|opts| opts.build(ctx)).transpose()?;
-        let shared_library = shared_library.map(|opts| opts.build());
+        let shared_library = shared_library.map(|opts| opts.build(ctx)).transpose()?;
         let script = script.map(|opts| opts.build(ctx)).transpose()?;
         let rewrap = rewrap.map(|opts| opts.build());
 
@@ -96,6 +96,9 @@ impl AutowrapConfigTemplate {
 #[serde(rename_all = "camelCase")]
 struct DynamicLinkingConfigTemplate {
     #[serde(default)]
+    library_paths: Vec<TemplatePath>,
+
+    #[serde(default)]
     skip_libraries: HashSet<String>,
 
     #[serde(default)]
@@ -106,18 +109,28 @@ struct DynamicLinkingConfigTemplate {
 }
 
 impl DynamicLinkingConfigTemplate {
-    fn build(self) -> super::DynamicLinkingConfig {
+    fn build(
+        self,
+        ctx: &AutowrapConfigTemplateContext,
+    ) -> eyre::Result<super::DynamicLinkingConfig> {
         let Self {
+            library_paths,
             skip_libraries,
             extra_libraries,
             skip_unknown_libraries,
         } = self;
 
-        super::DynamicLinkingConfig {
+        let library_paths = library_paths
+            .into_iter()
+            .map(|path| path.build(ctx))
+            .collect::<eyre::Result<_>>()?;
+
+        Ok(super::DynamicLinkingConfig {
+            library_paths,
             skip_libraries,
             extra_libraries,
             skip_unknown_libraries,
-        }
+        })
     }
 }
 
@@ -141,7 +154,7 @@ impl DynamicBinaryConfigTemplate {
         } = self;
 
         let packed_executable = packed_executable.build(ctx)?;
-        let dynamic_linking = dynamic_linking.build();
+        let dynamic_linking = dynamic_linking.build(ctx)?;
 
         Ok(super::DynamicBinaryConfig {
             packed_executable,
@@ -158,12 +171,15 @@ pub struct SharedLibraryConfigTemplate {
 }
 
 impl SharedLibraryConfigTemplate {
-    fn build(self) -> super::SharedLibraryConfig {
+    fn build(
+        self,
+        ctx: &AutowrapConfigTemplateContext,
+    ) -> eyre::Result<super::SharedLibraryConfig> {
         let Self { dynamic_linking } = self;
 
-        let dynamic_linking = dynamic_linking.build();
+        let dynamic_linking = dynamic_linking.build(ctx)?;
 
-        super::SharedLibraryConfig { dynamic_linking }
+        Ok(super::SharedLibraryConfig { dynamic_linking })
     }
 }
 

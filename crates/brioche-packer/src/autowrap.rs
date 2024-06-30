@@ -25,6 +25,7 @@ pub struct AutowrapConfig {
 
 #[derive(Debug, Clone)]
 pub struct DynamicLinkingConfig {
+    pub library_paths: Vec<PathBuf>,
     pub skip_libraries: HashSet<String>,
     pub extra_libraries: Vec<String>,
     pub skip_unknown_libraries: bool,
@@ -660,10 +661,13 @@ fn collect_all_library_dirs(
     dynamic_linking_config: &DynamicLinkingConfig,
     mut needed_libraries: VecDeque<String>,
 ) -> eyre::Result<Vec<PathBuf>> {
-    let mut library_search_paths = ctx.link_dependency_library_paths.clone();
+    let mut library_search_paths = vec![];
     let mut resource_library_dirs = vec![];
     let mut found_libraries = HashSet::new();
     let mut found_library_dirs = HashSet::new();
+
+    library_search_paths.extend_from_slice(&dynamic_linking_config.library_paths);
+    library_search_paths.extend_from_slice(&ctx.link_dependency_library_paths);
 
     while let Some(library_name) = needed_libraries.pop_front() {
         // If we've already found this library, then skip it
