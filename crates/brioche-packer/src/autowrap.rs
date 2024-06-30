@@ -553,13 +553,105 @@ fn autowrap_script(
 fn autowrap_rewrap(
     ctx: &AutowrapContext,
     source_path: &Path,
-    _output_path: &Path,
+    output_path: &Path,
 ) -> eyre::Result<bool> {
     let Some(_) = &ctx.config.rewrap else {
         return Ok(false);
     };
 
-    eyre::bail!("tried to rewrap {source_path:?}, but rewrapping is not yet implemented");
+    let contents = std::fs::read(source_path)?;
+    let extracted = brioche_pack::extract_pack(std::io::Cursor::new(&contents))?;
+
+    let rewrap_source = match extracted.pack {
+        brioche_pack::Pack::LdLinux { program, .. } => {
+            let program = program
+                .to_path()
+                .map_err(|_| eyre::eyre!("invalid program path: {}", bstr::BStr::new(&program)))?;
+            let program = brioche_resources::find_in_resource_dirs(&ctx.all_resource_dirs, program)
+                .ok_or_else(|| eyre::eyre!("resource not found: {}", program.display()))?;
+
+            RewrapSource::Path(program)
+        }
+        brioche_pack::Pack::Static { .. } => RewrapSource::This,
+        brioche_pack::Pack::Metadata {
+            format,
+            metadata,
+            resource_paths: _,
+        } => {
+            if format == runnable_core::FORMAT {
+                let metadata: runnable_core::Runnable = serde_json::from_slice(&metadata)
+                    .with_context(|| {
+                        format!("failed to deserialize runnable metadata: {metadata:?}")
+                    })?;
+                let Some(runnable_source) = metadata.source else {
+                    eyre::bail!(
+                        "tried to rewrap {}, but no source was set",
+                        source_path.display()
+                    );
+                };
+
+                let runnable_source_path = match runnable_source.path {
+                    runnable_core::RunnablePath::RelativePath { path } => {
+                        let path = path
+                            .to_path()
+                            .map_err(|_| eyre::eyre!("invalid relative path: {path:?}"))?;
+                        let new_source_path = source_path.join(path);
+
+                        eyre::ensure!(
+                            new_source_path.starts_with(source_path),
+                            "relative path {} escapes source path",
+                            path.display()
+                        );
+
+                        new_source_path
+                    }
+                    runnable_core::RunnablePath::Resource { resource } => {
+                        let resource = resource
+                            .to_path()
+                            .map_err(|_| eyre::eyre!("invalid resource path: {resource:?}"))?;
+                        brioche_resources::find_in_resource_dirs(&ctx.all_resource_dirs, resource)
+                            .ok_or_else(|| eyre::eyre!("resource not found: {resource:?}"))?
+                    }
+                };
+
+                RewrapSource::Path(runnable_source_path)
+            } else {
+                eyre::bail!("tried to rewrap unknown metadata format: {format:?}");
+            }
+        }
+    };
+
+    let unpacked_source_path;
+    let unpacked_output_path;
+    match rewrap_source {
+        RewrapSource::This => {
+            // Write the unpacked contents to the output path
+            let unpacked_contents = &contents[..extracted.unpacked_len];
+            std::fs::write(output_path, unpacked_contents).with_context(|| {
+                format!(
+                    "failed to write unpacked contents to {}",
+                    output_path.display()
+                )
+            })?;
+
+            // Rewrap the unpacked contents directly at the output path
+            unpacked_source_path = output_path.to_owned();
+            unpacked_output_path = output_path.to_owned();
+        }
+        RewrapSource::Path(path) => {
+            // Rewrap the source path and write to the output path
+            unpacked_source_path = path;
+            unpacked_output_path = output_path.to_owned();
+        }
+    }
+
+    let result = try_autowrap_path(ctx, &unpacked_source_path, &unpacked_output_path)?;
+    Ok(result)
+}
+
+enum RewrapSource {
+    This,
+    Path(PathBuf),
 }
 
 fn collect_all_library_dirs(
