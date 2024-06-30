@@ -238,6 +238,7 @@ fn autowrap_kind(path: &Path) -> eyre::Result<Option<AutowrapKind>> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 enum AutowrapKind {
     DynamicBinary,
     SharedLibrary,
