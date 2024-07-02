@@ -73,6 +73,10 @@ fn run() -> eyre::Result<ExitCode> {
         }
     }
 
+    // `ld` can take dynamic libraries directly as inputs, so check all the
+    // input paths when searching for required libraries
+    library_search_paths.extend(input_paths);
+
     // Determine whether we will wrap the resulting binary or not. We do this
     // before running the command so we can bail early if the resource dir
     // cannot be found.
