@@ -759,10 +759,46 @@ fn find_library(
     library_search_paths: &[PathBuf],
     library_name: &str,
 ) -> eyre::Result<Option<PathBuf>> {
+    let mut library_search_path_files = vec![];
+
+    // Try to find a direct filename match from the search paths
     for path in library_search_paths {
-        let lib_path = path.join(library_name);
-        if lib_path.is_file() {
-            return Ok(Some(lib_path));
+        if path.is_dir() {
+            // Check if the search path is a directory and contains a file
+            // matching the library name
+            let lib_path = path.join(library_name);
+            if lib_path.is_file() {
+                return Ok(Some(lib_path));
+            }
+        } else if path.is_file() {
+            // Check if the search path is a file that matches the library
+            // name directly
+            let path_filename = path
+                .file_name()
+                .ok_or_eyre("failed to get filename from path")?;
+            if path_filename.to_str() == Some(library_name) {
+                return Ok(Some(path.to_owned()));
+            }
+
+            // If the filename doesn't match, queue it for a further check
+            // if we don't find another path-based match
+            library_search_path_files.push(path);
+        }
+    }
+
+    // Try to find a library file that matches based on its `DT_SONAME` field
+    // as a fallback
+    for &path in &library_search_path_files {
+        let Ok(contents) = std::fs::read(path) else {
+            continue;
+        };
+
+        let Ok(elf) = goblin::elf::Elf::parse(&contents) else {
+            continue;
+        };
+
+        if elf.soname == Some(library_name) {
+            return Ok(Some(path.to_owned()));
         }
     }
 
