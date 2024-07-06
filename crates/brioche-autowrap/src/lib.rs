@@ -281,9 +281,9 @@ fn autowrap_dynamic_binary(
     let interpreter_path = interpreter_path.ok_or_else(|| {
         eyre::eyre!("could not find interpreter for dynamic binary: {source_path:?}")
     })?;
-    let interpreter_resource_path = add_named_blob_from(ctx, &interpreter_path)
+    let interpreter_resource_path = add_named_blob_from(ctx, &interpreter_path, None)
         .with_context(|| format!("failed to add resource for interpreter {interpreter_path:?}"))?;
-    let program_resource_path = add_named_blob_from(ctx, source_path)
+    let program_resource_path = add_named_blob_from(ctx, source_path, None)
         .with_context(|| format!("failed to add resource for program {source_path:?}"))?;
 
     let needed_libraries: VecDeque<_> = program_object
@@ -457,8 +457,8 @@ fn autowrap_script(
     }
 
     let command = command.ok_or_else(|| eyre::eyre!("could not find command {command_name:?}"))?;
-    let command_resource = add_named_blob_from(ctx, &command)?;
-    let script_resource = add_named_blob_from(ctx, source_path)?;
+    let command_resource = add_named_blob_from(ctx, &command, None)?;
+    let script_resource = add_named_blob_from(ctx, source_path, None)?;
 
     let env_resource_paths = script_config
         .env
@@ -692,8 +692,11 @@ fn collect_all_library_dirs(
             .contains(&*library_name)
         {
             // Add the library to the resource directory
-            let library_resource_path = add_named_blob_from(ctx, &library_path)
-                .with_context(|| format!("failed to add resource for library {library_path:?}"))?;
+            let library_alias = Path::new(&library_name);
+            let library_resource_path =
+                add_named_blob_from(ctx, &library_path, Some(library_alias)).with_context(
+                    || format!("failed to add resource for library {library_path:?}"),
+                )?;
 
             // Add the parent dir to the list of library directories. Note
             // that this directory is guaranteed to only contain just this
@@ -805,12 +808,22 @@ fn find_library(
     Ok(None)
 }
 
-fn add_named_blob_from(ctx: &AutowrapContext, path: &Path) -> eyre::Result<PathBuf> {
+fn add_named_blob_from(
+    ctx: &AutowrapContext,
+    path: &Path,
+    alias_name: Option<&Path>,
+) -> eyre::Result<PathBuf> {
     use std::os::unix::prelude::PermissionsExt as _;
 
-    let filename = path
-        .file_name()
-        .ok_or_eyre("failed to get filename from path")?;
+    let alias_name = match alias_name {
+        Some(alias_name) => alias_name,
+        None => {
+            let filename = path
+                .file_name()
+                .ok_or_eyre("failed to get filename from path")?;
+            Path::new(filename)
+        }
+    };
 
     let mut file = std::fs::File::open(path)?;
     let metadata = file.metadata()?;
@@ -826,7 +839,7 @@ fn add_named_blob_from(ctx: &AutowrapContext, path: &Path) -> eyre::Result<PathB
         &ctx.config.resource_dir,
         std::io::Cursor::new(contents),
         is_executable,
-        Path::new(filename),
+        alias_name,
     )?;
     Ok(resource_path)
 }
