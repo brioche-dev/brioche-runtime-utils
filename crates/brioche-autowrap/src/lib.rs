@@ -84,7 +84,20 @@ pub fn autowrap(config: &AutowrapConfig) -> eyre::Result<()> {
             let walkdir = walkdir::WalkDir::new(base_path);
             for entry in walkdir {
                 let entry = entry?;
-                if globs.is_match(entry.path()) {
+                if !entry.file_type().is_file() {
+                    continue;
+                }
+
+                let relative_entry_path = pathdiff::diff_paths(entry.path(), base_path)
+                    .ok_or_else(|| {
+                        eyre::eyre!(
+                            "failed to resolve matched path {} relative to base path {}",
+                            entry.path().display(),
+                            base_path.display()
+                        )
+                    })?;
+
+                if globs.is_match(&relative_entry_path) {
                     let did_wrap = try_autowrap_path(&ctx, entry.path(), entry.path())?;
                     if !config.quiet {
                         if did_wrap {

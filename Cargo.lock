@@ -177,6 +177,7 @@ dependencies = [
  "eyre",
  "globset",
  "goblin 0.8.2",
+ "pathdiff",
  "runnable-core",
  "serde_json",
  "thiserror",
