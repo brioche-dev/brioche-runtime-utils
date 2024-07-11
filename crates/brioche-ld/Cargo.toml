@@ -9,5 +9,4 @@ brioche-pack = { workspace = true }
 brioche-resources = { path = "../brioche-resources" }
 bstr = "1.8.0"
 eyre = "0.6.12"
-goblin = "0.7.1"
 thiserror = "1.0.51"

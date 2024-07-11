@@ -193,7 +193,6 @@ dependencies = [
  "brioche-resources",
  "bstr",
  "eyre",
- "goblin 0.7.1",
  "thiserror",
 ]
 
@@ -821,7 +820,6 @@ name = "runnable-core"
 version = "0.1.0"
 dependencies = [
  "bincode",
- "brioche-pack",
  "brioche-resources",
  "bstr",
  "schemars",

@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 bincode = "2.0.0-rc.3"
-brioche-pack = { workspace = true }
 brioche-resources = { path = "../brioche-resources" }
 bstr = "1.9.1"
 schemars = "0.8.21"
