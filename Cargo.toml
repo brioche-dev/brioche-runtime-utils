@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
-members = [ "crates/brioche-autowrap",
+members = [
+    "crates/brioche-autopack",
     "crates/brioche-ld",
     "crates/brioche-packed-plain-exec",
     "crates/brioche-packed-userland-exec",

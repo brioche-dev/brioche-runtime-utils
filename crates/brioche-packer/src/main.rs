@@ -3,7 +3,7 @@ use std::{os::unix::fs::OpenOptionsExt as _, path::PathBuf, process::ExitCode};
 use clap::Parser;
 use eyre::{Context as _, OptionExt as _};
 
-mod autowrap_template;
+mod autopack_template;
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Parser)]
@@ -16,13 +16,13 @@ enum Args {
         #[arg(long)]
         pack: String,
     },
-    Autowrap(AutowrapArgs),
+    Autopack(AutopackArgs),
     Read {
         program: PathBuf,
     },
 }
 
-impl std::str::FromStr for AutowrapTemplateValue {
+impl std::str::FromStr for AutopackTemplateValue {
     type Err = eyre::Error;
 
     fn from_str(s: &str) -> eyre::Result<Self> {
@@ -36,7 +36,7 @@ impl std::str::FromStr for AutowrapTemplateValue {
         let value = match ty {
             "path" => {
                 let value = PathBuf::from(value);
-                autowrap_template::TemplateVariableValue::Path(value)
+                autopack_template::TemplateVariableValue::Path(value)
             }
             _ => {
                 eyre::bail!("unknown type {ty:?}, expected \"path\"");
@@ -85,8 +85,8 @@ fn run() -> eyre::Result<()> {
 
             brioche_pack::inject_pack(&mut output, &pack)?;
         }
-        Args::Autowrap(args) => {
-            run_autowrap(args)?;
+        Args::Autopack(args) => {
+            run_autopack(args)?;
         }
         Args::Read { program } => {
             let mut program = std::fs::File::open(program)?;
@@ -102,7 +102,7 @@ fn run() -> eyre::Result<()> {
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Parser)]
-struct AutowrapArgs {
+struct AutopackArgs {
     #[arg(long)]
     schema: bool,
 
@@ -113,18 +113,18 @@ struct AutowrapArgs {
     config: Option<String>,
 
     #[arg(long = "var", value_parser)]
-    variables: Vec<AutowrapTemplateValue>,
+    variables: Vec<AutopackTemplateValue>,
 }
 
 #[derive(Debug, Clone)]
-struct AutowrapTemplateValue {
+struct AutopackTemplateValue {
     name: String,
-    value: autowrap_template::TemplateVariableValue,
+    value: autopack_template::TemplateVariableValue,
 }
 
-fn run_autowrap(args: AutowrapArgs) -> eyre::Result<()> {
+fn run_autopack(args: AutopackArgs) -> eyre::Result<()> {
     if args.schema {
-        let schema = schemars::schema_for!(autowrap_template::AutowrapConfigTemplate);
+        let schema = schemars::schema_for!(autopack_template::AutopackConfigTemplate);
         serde_json::to_writer_pretty(std::io::stdout().lock(), &schema)?;
         println!();
         return Ok(());
@@ -134,7 +134,7 @@ fn run_autowrap(args: AutowrapArgs) -> eyre::Result<()> {
     let config = args.config.ok_or_eyre("missing --config")?;
 
     let config_template =
-        serde_json::from_str::<autowrap_template::AutowrapConfigTemplate>(&config);
+        serde_json::from_str::<autopack_template::AutopackConfigTemplate>(&config);
     let config_template = match config_template {
         Ok(config_template) => config_template,
         Err(err) => {
@@ -155,13 +155,13 @@ fn run_autowrap(args: AutowrapArgs) -> eyre::Result<()> {
 
     let resource_dir = brioche_resources::find_output_resource_dir(&program)?;
 
-    let ctx = &autowrap_template::AutowrapConfigTemplateContext {
+    let ctx = &autopack_template::AutopackConfigTemplateContext {
         variables,
         resource_dir,
     };
     let config = config_template.build(ctx, recipe_path)?;
 
-    brioche_autowrap::autowrap(&config)?;
+    brioche_autopack::autopack(&config)?;
 
     Ok(())
 }

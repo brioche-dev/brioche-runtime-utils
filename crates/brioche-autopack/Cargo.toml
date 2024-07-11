@@ -1,5 +1,5 @@
 [package]
-name = "brioche-autowrap"
+name = "brioche-autopack"
 version = "0.1.0"
 edition = "2021"
 

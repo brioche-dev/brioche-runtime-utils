@@ -6,12 +6,12 @@ use std::{
 use bstr::ByteVec as _;
 use runnable_core::encoding::TickEncoded;
 
-pub struct AutowrapConfigTemplateContext {
+pub struct AutopackConfigTemplateContext {
     pub variables: HashMap<String, TemplateVariableValue>,
     pub resource_dir: PathBuf,
 }
 
-impl AutowrapConfigTemplateContext {
+impl AutopackConfigTemplateContext {
     fn get(&self, variable: &TemplateVariable) -> eyre::Result<&TemplateVariableValue> {
         self.variables
             .get(&variable.variable)
@@ -21,7 +21,7 @@ impl AutowrapConfigTemplateContext {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct AutowrapConfigTemplate {
+pub struct AutopackConfigTemplate {
     #[serde(default)]
     paths: Vec<TemplatePath>,
 
@@ -43,15 +43,15 @@ pub struct AutowrapConfigTemplate {
 
     script: Option<ScriptConfigTemplate>,
 
-    rewrap: Option<RewrapConfigTemplate>,
+    repack: Option<RepackConfigTemplate>,
 }
 
-impl AutowrapConfigTemplate {
+impl AutopackConfigTemplate {
     pub fn build(
         self,
-        ctx: &AutowrapConfigTemplateContext,
+        ctx: &AutopackConfigTemplateContext,
         recipe_path: PathBuf,
-    ) -> eyre::Result<brioche_autowrap::AutowrapConfig> {
+    ) -> eyre::Result<brioche_autopack::AutopackConfig> {
         let Self {
             paths,
             globs,
@@ -61,7 +61,7 @@ impl AutowrapConfigTemplate {
             dynamic_binary,
             shared_library,
             script,
-            rewrap,
+            repack,
         } = self;
 
         let paths = paths
@@ -77,7 +77,7 @@ impl AutowrapConfigTemplate {
             .transpose()?;
         let shared_library = shared_library.map(|opts| opts.build(ctx)).transpose()?;
         let script = script.map(|opts| opts.build(ctx)).transpose()?;
-        let rewrap = rewrap.map(|opts| opts.build());
+        let repack = repack.map(|opts| opts.build());
 
         if self_dependency {
             link_dependencies.insert(0, recipe_path.clone());
@@ -88,10 +88,10 @@ impl AutowrapConfigTemplate {
                 .into_iter()
                 .map(|path| recipe_path.join(path))
                 .collect();
-            brioche_autowrap::AutowrapInputs::Paths(paths)
+            brioche_autopack::AutopackInputs::Paths(paths)
         } else {
             eyre::ensure!(paths.is_empty(), "cannot include both paths and globs");
-            brioche_autowrap::AutowrapInputs::Globs {
+            brioche_autopack::AutopackInputs::Globs {
                 patterns: globs,
                 base_path: recipe_path.clone(),
             }
@@ -104,7 +104,7 @@ impl AutowrapConfigTemplate {
         let resource_dir = brioche_resources::find_output_resource_dir(&program)?;
         let all_resource_dirs = brioche_resources::find_resource_dirs(&program, true)?;
 
-        Ok(brioche_autowrap::AutowrapConfig {
+        Ok(brioche_autopack::AutopackConfig {
             resource_dir,
             all_resource_dirs,
             inputs,
@@ -113,7 +113,7 @@ impl AutowrapConfigTemplate {
             dynamic_binary,
             shared_library,
             script,
-            rewrap,
+            repack,
         })
     }
 }
@@ -137,8 +137,8 @@ struct DynamicLinkingConfigTemplate {
 impl DynamicLinkingConfigTemplate {
     fn build(
         self,
-        ctx: &AutowrapConfigTemplateContext,
-    ) -> eyre::Result<brioche_autowrap::DynamicLinkingConfig> {
+        ctx: &AutopackConfigTemplateContext,
+    ) -> eyre::Result<brioche_autopack::DynamicLinkingConfig> {
         let Self {
             library_paths,
             skip_libraries,
@@ -151,7 +151,7 @@ impl DynamicLinkingConfigTemplate {
             .map(|path| path.build(ctx))
             .collect::<eyre::Result<_>>()?;
 
-        Ok(brioche_autowrap::DynamicLinkingConfig {
+        Ok(brioche_autopack::DynamicLinkingConfig {
             library_paths,
             skip_libraries,
             extra_libraries,
@@ -175,9 +175,9 @@ pub struct DynamicBinaryConfigTemplate {
 impl DynamicBinaryConfigTemplate {
     fn build(
         self,
-        ctx: &AutowrapConfigTemplateContext,
+        ctx: &AutopackConfigTemplateContext,
         recipe_path: &Path,
-    ) -> eyre::Result<brioche_autowrap::DynamicBinaryConfig> {
+    ) -> eyre::Result<brioche_autopack::DynamicBinaryConfig> {
         let Self {
             packed_executable,
             extra_runtime_library_paths,
@@ -199,7 +199,7 @@ impl DynamicBinaryConfigTemplate {
             })
             .collect::<eyre::Result<_>>()?;
 
-        Ok(brioche_autowrap::DynamicBinaryConfig {
+        Ok(brioche_autopack::DynamicBinaryConfig {
             packed_executable,
             extra_runtime_library_paths,
             dynamic_linking,
@@ -217,13 +217,13 @@ pub struct SharedLibraryConfigTemplate {
 impl SharedLibraryConfigTemplate {
     fn build(
         self,
-        ctx: &AutowrapConfigTemplateContext,
-    ) -> eyre::Result<brioche_autowrap::SharedLibraryConfig> {
+        ctx: &AutopackConfigTemplateContext,
+    ) -> eyre::Result<brioche_autopack::SharedLibraryConfig> {
         let Self { dynamic_linking } = self;
 
         let dynamic_linking = dynamic_linking.build(ctx)?;
 
-        Ok(brioche_autowrap::SharedLibraryConfig { dynamic_linking })
+        Ok(brioche_autopack::SharedLibraryConfig { dynamic_linking })
     }
 }
 
@@ -242,8 +242,8 @@ pub struct ScriptConfigTemplate {
 impl ScriptConfigTemplate {
     fn build(
         self,
-        ctx: &AutowrapConfigTemplateContext,
-    ) -> eyre::Result<brioche_autowrap::ScriptConfig> {
+        ctx: &AutopackConfigTemplateContext,
+    ) -> eyre::Result<brioche_autopack::ScriptConfig> {
         let Self {
             packed_executable,
             env,
@@ -259,7 +259,7 @@ impl ScriptConfigTemplate {
             })
             .collect::<eyre::Result<_>>()?;
 
-        Ok(brioche_autowrap::ScriptConfig {
+        Ok(brioche_autopack::ScriptConfig {
             packed_executable,
             env,
             clear_env,
@@ -269,12 +269,12 @@ impl ScriptConfigTemplate {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct RewrapConfigTemplate {}
+pub struct RepackConfigTemplate {}
 
-impl RewrapConfigTemplate {
-    fn build(self) -> brioche_autowrap::RewrapConfig {
+impl RepackConfigTemplate {
+    fn build(self) -> brioche_autopack::RepackConfig {
         let Self {} = self;
-        brioche_autowrap::RewrapConfig {}
+        brioche_autopack::RepackConfig {}
     }
 }
 
@@ -310,7 +310,7 @@ enum EnvValueTemplate {
 impl EnvValueTemplate {
     fn build(
         self,
-        ctx: &AutowrapConfigTemplateContext,
+        ctx: &AutopackConfigTemplateContext,
         env_var: &str,
     ) -> eyre::Result<runnable_core::EnvValue> {
         match self {
@@ -345,7 +345,7 @@ struct EnvValueTemplateValue {
 impl EnvValueTemplateValue {
     fn build(
         self,
-        ctx: &AutowrapConfigTemplateContext,
+        ctx: &AutopackConfigTemplateContext,
         env_var: &str,
     ) -> eyre::Result<runnable_core::Template> {
         let components = self
@@ -384,7 +384,7 @@ enum EnvValueTemplateValueComponent {
 impl EnvValueTemplateValueComponent {
     fn build(
         self,
-        ctx: &AutowrapConfigTemplateContext,
+        ctx: &AutopackConfigTemplateContext,
         env_var: &str,
     ) -> eyre::Result<runnable_core::TemplateComponent> {
         match self {
@@ -422,7 +422,7 @@ enum TemplatePath {
 }
 
 impl TemplatePath {
-    fn build(self, ctx: &AutowrapConfigTemplateContext) -> eyre::Result<PathBuf> {
+    fn build(self, ctx: &AutopackConfigTemplateContext) -> eyre::Result<PathBuf> {
         match self {
             Self::Path(path) => Ok(path),
             Self::Variable(variable) => {

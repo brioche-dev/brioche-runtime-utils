@@ -8,20 +8,20 @@ use bstr::{ByteSlice as _, ByteVec as _};
 use eyre::{Context as _, OptionExt as _};
 
 #[derive(Debug, Clone)]
-pub struct AutowrapConfig {
+pub struct AutopackConfig {
     pub resource_dir: PathBuf,
     pub all_resource_dirs: Vec<PathBuf>,
-    pub inputs: AutowrapInputs,
+    pub inputs: AutopackInputs,
     pub quiet: bool,
     pub link_dependencies: Vec<PathBuf>,
     pub dynamic_binary: Option<DynamicBinaryConfig>,
     pub shared_library: Option<SharedLibraryConfig>,
     pub script: Option<ScriptConfig>,
-    pub rewrap: Option<RewrapConfig>,
+    pub repack: Option<RepackConfig>,
 }
 
 #[derive(Debug, Clone)]
-pub enum AutowrapInputs {
+pub enum AutopackInputs {
     Paths(Vec<PathBuf>),
     Globs {
         base_path: PathBuf,
@@ -57,22 +57,22 @@ pub struct ScriptConfig {
 }
 
 #[derive(Debug, Clone)]
-pub struct RewrapConfig {}
+pub struct RepackConfig {}
 
-pub fn autowrap(config: &AutowrapConfig) -> eyre::Result<()> {
-    let ctx = autowrap_context(config)?;
+pub fn autopack(config: &AutopackConfig) -> eyre::Result<()> {
+    let ctx = autopack_context(config)?;
 
     match &config.inputs {
-        AutowrapInputs::Paths(paths) => {
+        AutopackInputs::Paths(paths) => {
             for path in paths {
-                let did_wrap = try_autowrap_path(&ctx, path, path)?;
-                eyre::ensure!(did_wrap, "failed to wrap path: {path:?}");
+                let did_pack = try_autopack_path(&ctx, path, path)?;
+                eyre::ensure!(did_pack, "failed to autopack path: {path:?}");
                 if !config.quiet {
-                    println!("wrapped {}", path.display());
+                    println!("autopacked {}", path.display());
                 }
             }
         }
-        AutowrapInputs::Globs {
+        AutopackInputs::Globs {
             base_path,
             patterns,
         } => {
@@ -99,10 +99,10 @@ pub fn autowrap(config: &AutowrapConfig) -> eyre::Result<()> {
                     })?;
 
                 if globs.is_match(&relative_entry_path) {
-                    let did_wrap = try_autowrap_path(&ctx, entry.path(), entry.path())?;
+                    let did_pack = try_autopack_path(&ctx, entry.path(), entry.path())?;
                     if !config.quiet {
-                        if did_wrap {
-                            println!("wrapped {}", entry.path().display());
+                        if did_pack {
+                            println!("autopacked {}", entry.path().display());
                         } else {
                             println!("skipped {}", entry.path().display());
                         }
@@ -115,13 +115,13 @@ pub fn autowrap(config: &AutowrapConfig) -> eyre::Result<()> {
     Ok(())
 }
 
-struct AutowrapContext<'a> {
-    config: &'a AutowrapConfig,
+struct AutopackContext<'a> {
+    config: &'a AutopackConfig,
     link_dependency_library_paths: Vec<PathBuf>,
     link_dependency_paths: Vec<PathBuf>,
 }
 
-fn autowrap_context(config: &AutowrapConfig) -> eyre::Result<AutowrapContext> {
+fn autopack_context(config: &AutopackConfig) -> eyre::Result<AutopackContext> {
     let mut link_dependency_library_paths = vec![];
     let mut link_dependency_paths = vec![];
     for link_dep in &config.link_dependencies {
@@ -195,40 +195,40 @@ fn autowrap_context(config: &AutowrapConfig) -> eyre::Result<AutowrapContext> {
         }
     }
 
-    Ok(AutowrapContext {
+    Ok(AutopackContext {
         config,
         link_dependency_library_paths,
         link_dependency_paths,
     })
 }
 
-fn try_autowrap_path(
-    ctx: &AutowrapContext,
+fn try_autopack_path(
+    ctx: &AutopackContext,
     source_path: &Path,
     output_path: &Path,
 ) -> eyre::Result<bool> {
-    let Some(kind) = autowrap_kind(source_path)? else {
+    let Some(kind) = autopack_kind(source_path)? else {
         return Ok(false);
     };
 
     match kind {
-        AutowrapKind::DynamicBinary => autowrap_dynamic_binary(ctx, source_path, output_path),
-        AutowrapKind::SharedLibrary => autowrap_shared_library(ctx, source_path, output_path),
-        AutowrapKind::Script => autowrap_script(ctx, source_path, output_path),
-        AutowrapKind::Rewrap => autowrap_rewrap(ctx, source_path, output_path),
+        AutopackKind::DynamicBinary => autopack_dynamic_binary(ctx, source_path, output_path),
+        AutopackKind::SharedLibrary => autopack_shared_library(ctx, source_path, output_path),
+        AutopackKind::Script => autopack_script(ctx, source_path, output_path),
+        AutopackKind::Repack => autopack_repack(ctx, source_path, output_path),
     }
 }
 
-fn autowrap_kind(path: &Path) -> eyre::Result<Option<AutowrapKind>> {
+fn autopack_kind(path: &Path) -> eyre::Result<Option<AutopackKind>> {
     let contents = std::fs::read(path)?;
 
     let contents_cursor = std::io::Cursor::new(&contents[..]);
     let pack = brioche_pack::extract_pack(contents_cursor);
 
     if pack.is_ok() {
-        Ok(Some(AutowrapKind::Rewrap))
+        Ok(Some(AutopackKind::Repack))
     } else if contents.starts_with(b"#!") {
-        Ok(Some(AutowrapKind::Script))
+        Ok(Some(AutopackKind::Script))
     } else {
         let program_object = goblin::Object::parse(&contents);
 
@@ -237,9 +237,9 @@ fn autowrap_kind(path: &Path) -> eyre::Result<Option<AutowrapKind>> {
         };
 
         if program_object.interpreter.is_some() {
-            Ok(Some(AutowrapKind::DynamicBinary))
+            Ok(Some(AutopackKind::DynamicBinary))
         } else if program_object.is_lib {
-            Ok(Some(AutowrapKind::SharedLibrary))
+            Ok(Some(AutopackKind::SharedLibrary))
         } else {
             Ok(None)
         }
@@ -247,15 +247,15 @@ fn autowrap_kind(path: &Path) -> eyre::Result<Option<AutowrapKind>> {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum AutowrapKind {
+enum AutopackKind {
     DynamicBinary,
     SharedLibrary,
     Script,
-    Rewrap,
+    Repack,
 }
 
-fn autowrap_dynamic_binary(
-    ctx: &AutowrapContext,
+fn autopack_dynamic_binary(
+    ctx: &AutopackContext,
     source_path: &Path,
     output_path: &Path,
 ) -> eyre::Result<bool> {
@@ -272,14 +272,14 @@ fn autowrap_dynamic_binary(
 
     let goblin::Object::Elf(program_object) = program_object else {
         eyre::bail!(
-            "tried to wrap non-ELF dynamic binary: {}",
+            "tried to autopack non-ELF dynamic binary: {}",
             source_path.display()
         );
     };
 
     let Some(interpreter) = program_object.interpreter else {
         eyre::bail!(
-            "tried to wrap dynamic binary without an interpreter: {}",
+            "tried to autopack dynamic binary without an interpreter: {}",
             source_path.display()
         );
     };
@@ -365,8 +365,8 @@ fn autowrap_dynamic_binary(
     Ok(true)
 }
 
-fn autowrap_shared_library(
-    ctx: &AutowrapContext,
+fn autopack_shared_library(
+    ctx: &AutopackContext,
     source_path: &Path,
     output_path: &Path,
 ) -> eyre::Result<bool> {
@@ -379,7 +379,7 @@ fn autowrap_shared_library(
 
     let goblin::Object::Elf(program_object) = program_object else {
         eyre::bail!(
-            "tried to wrap non-ELF dynamic binary: {}",
+            "tried to autopack non-ELF dynamic binary: {}",
             source_path.display()
         );
     };
@@ -431,8 +431,8 @@ fn autowrap_shared_library(
     Ok(true)
 }
 
-fn autowrap_script(
-    ctx: &AutowrapContext,
+fn autopack_script(
+    ctx: &AutopackContext,
     source_path: &Path,
     output_path: &Path,
 ) -> eyre::Result<bool> {
@@ -567,19 +567,19 @@ fn autowrap_script(
     Ok(true)
 }
 
-fn autowrap_rewrap(
-    ctx: &AutowrapContext,
+fn autopack_repack(
+    ctx: &AutopackContext,
     source_path: &Path,
     output_path: &Path,
 ) -> eyre::Result<bool> {
-    let Some(_) = &ctx.config.rewrap else {
+    let Some(_) = &ctx.config.repack else {
         return Ok(false);
     };
 
     let contents = std::fs::read(source_path)?;
     let extracted = brioche_pack::extract_pack(std::io::Cursor::new(&contents))?;
 
-    let rewrap_source = match extracted.pack {
+    let repack_source = match extracted.pack {
         brioche_pack::Pack::LdLinux { program, .. } => {
             let program = program
                 .to_path()
@@ -588,9 +588,9 @@ fn autowrap_rewrap(
                 brioche_resources::find_in_resource_dirs(&ctx.config.all_resource_dirs, program)
                     .ok_or_else(|| eyre::eyre!("resource not found: {}", program.display()))?;
 
-            RewrapSource::Path(program)
+            RepackSource::Path(program)
         }
-        brioche_pack::Pack::Static { .. } => RewrapSource::This,
+        brioche_pack::Pack::Static { .. } => RepackSource::This,
         brioche_pack::Pack::Metadata {
             format,
             metadata,
@@ -603,7 +603,7 @@ fn autowrap_rewrap(
                     })?;
                 let Some(runnable_source) = metadata.source else {
                     eyre::bail!(
-                        "tried to rewrap {}, but no source was set",
+                        "tried to repack {}, but no source was set",
                         source_path.display()
                     );
                 };
@@ -635,17 +635,17 @@ fn autowrap_rewrap(
                     }
                 };
 
-                RewrapSource::Path(runnable_source_path)
+                RepackSource::Path(runnable_source_path)
             } else {
-                eyre::bail!("tried to rewrap unknown metadata format: {format:?}");
+                eyre::bail!("tried to repack unknown metadata format: {format:?}");
             }
         }
     };
 
     let unpacked_source_path;
     let unpacked_output_path;
-    match rewrap_source {
-        RewrapSource::This => {
+    match repack_source {
+        RepackSource::This => {
             // Write the unpacked contents to the output path
             let unpacked_contents = &contents[..extracted.unpacked_len];
             std::fs::write(output_path, unpacked_contents).with_context(|| {
@@ -655,28 +655,28 @@ fn autowrap_rewrap(
                 )
             })?;
 
-            // Rewrap the unpacked contents directly at the output path
+            // Repack the unpacked contents directly at the output path
             unpacked_source_path = output_path.to_owned();
             unpacked_output_path = output_path.to_owned();
         }
-        RewrapSource::Path(path) => {
-            // Rewrap the source path and write to the output path
+        RepackSource::Path(path) => {
+            // Repack the source path and write to the output path
             unpacked_source_path = path;
             unpacked_output_path = output_path.to_owned();
         }
     }
 
-    let result = try_autowrap_path(ctx, &unpacked_source_path, &unpacked_output_path)?;
+    let result = try_autopack_path(ctx, &unpacked_source_path, &unpacked_output_path)?;
     Ok(result)
 }
 
-enum RewrapSource {
+enum RepackSource {
     This,
     Path(PathBuf),
 }
 
 fn collect_all_library_dirs(
-    ctx: &AutowrapContext,
+    ctx: &AutopackContext,
     dynamic_linking_config: &DynamicLinkingConfig,
     mut needed_libraries: VecDeque<String>,
 ) -> eyre::Result<Vec<PathBuf>> {
@@ -831,7 +831,7 @@ fn find_library(
 }
 
 fn add_named_blob_from(
-    ctx: &AutowrapContext,
+    ctx: &AutopackContext,
     path: &Path,
     alias_name: Option<&Path>,
 ) -> eyre::Result<PathBuf> {
