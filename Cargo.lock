@@ -176,7 +176,7 @@ dependencies = [
  "bstr",
  "eyre",
  "globset",
- "goblin 0.8.2",
+ "goblin",
  "pathdiff",
  "runnable-core",
  "serde_json",
@@ -199,18 +199,14 @@ dependencies = [
 [[package]]
 name = "brioche-pack"
 version = "0.1.1"
-source = "git+https://github.com/brioche-dev/brioche.git#9ce499cad0c9a7b692cbf5d2cea7d84fd52e8f8a"
+source = "git+https://github.com/brioche-dev/brioche.git#29e77c8743e9f4588a78ec4464a61bcc3eac0ca2"
 dependencies = [
  "bincode",
- "blake3",
  "bstr",
- "goblin 0.7.1",
- "pathdiff",
  "serde",
  "serde_with",
  "thiserror",
  "tick-encoding",
- "ulid",
 ]
 
 [[package]]
@@ -252,7 +248,7 @@ dependencies = [
  "color-eyre",
  "eyre",
  "globset",
- "goblin 0.8.2",
+ "goblin",
  "runnable-core",
  "schemars",
  "serde",
@@ -518,24 +514,13 @@ dependencies = [
 
 [[package]]
 name = "goblin"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f27c1b4369c2cd341b5de549380158b105a04c331be5db9110eef7b6d2742134"
-dependencies = [
- "log",
- "plain",
- "scroll 0.11.0",
-]
-
-[[package]]
-name = "goblin"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b363a30c165f666402fe6a3024d3bec7ebc898f96a4a23bd1c99f8dbf3f4f47"
 dependencies = [
  "log",
  "plain",
- "scroll 0.12.0",
+ "scroll",
 ]
 
 [[package]]
@@ -876,31 +861,11 @@ dependencies = [
 
 [[package]]
 name = "scroll"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04c565b551bafbef4157586fa379538366e4385d42082f255bfd96e4fe8519da"
-dependencies = [
- "scroll_derive 0.11.1",
-]
-
-[[package]]
-name = "scroll"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ab8598aa408498679922eff7fa985c25d58a90771bd6be794434c5277eab1a6"
 dependencies = [
- "scroll_derive 0.12.0",
-]
-
-[[package]]
-name = "scroll_derive"
-version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1db149f81d46d2deba7cd3c50772474707729550221e69588478ebf9ada425ae"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
+ "scroll_derive",
 ]
 
 [[package]]
@@ -1147,7 +1112,7 @@ version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ea5394ca2e759920eefe2b20fc111d6e612cc2d71a47f9449745f93af88b61ba"
 dependencies = [
- "goblin 0.8.2",
+ "goblin",
  "nix",
 ]
 
