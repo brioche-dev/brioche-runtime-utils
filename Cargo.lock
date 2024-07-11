@@ -185,13 +185,8 @@ dependencies = [
 name = "brioche-packed-userland-exec"
 version = "0.1.1"
 dependencies = [
- "bincode",
- "brioche-pack",
- "brioche-resources",
- "bstr",
  "cfg-if",
  "libc",
- "thiserror",
  "userland-execve",
 ]
 
@@ -639,7 +634,6 @@ name = "runnable-core"
 version = "0.1.0"
 dependencies = [
  "bincode",
- "brioche-pack",
  "brioche-resources",
  "bstr",
  "serde",

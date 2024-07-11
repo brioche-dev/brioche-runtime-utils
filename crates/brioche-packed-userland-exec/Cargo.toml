@@ -4,13 +4,8 @@ version = "0.1.1"
 edition = "2021"
 
 [dependencies]
-bincode = "2.0.0-rc.3"
-brioche-pack = { workspace = true }
-brioche-resources = { path = "../brioche-resources" }
-bstr = "1.8.0"
 cfg-if = "1.0.0"
 libc = "0.2.151"
-thiserror = "1.0.51"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 userland-execve = "0.2.0"
