@@ -4,11 +4,11 @@ use bstr::ByteSlice as _;
 use eyre::{Context as _, OptionExt as _};
 
 enum Mode {
-    AutowrapEnabled {
+    AutopackEnabled {
         resource_dir: PathBuf,
         all_resource_dirs: Vec<PathBuf>,
     },
-    AutowrapDisabled,
+    AutopackDisabled,
 }
 
 fn main() -> ExitCode {
@@ -77,24 +77,24 @@ fn run() -> eyre::Result<ExitCode> {
     // input paths when searching for required libraries
     library_search_paths.extend(input_paths);
 
-    // Determine whether we will wrap the resulting binary or not. We do this
+    // Determine whether we will pack the resulting binary or not. We do this
     // before running the command so we can bail early if the resource dir
     // cannot be found.
-    let autowrap_mode = match std::env::var("BRIOCHE_LD_AUTOWRAP").as_deref() {
-        Ok("false") => Mode::AutowrapDisabled,
+    let autopack_mode = match std::env::var("BRIOCHE_LD_AUTOPACK").as_deref() {
+        Ok("false") => Mode::AutopackDisabled,
         _ => {
             let resource_dir = brioche_resources::find_output_resource_dir(&output_path)
                 .context("error while finding resource dir")?;
             let all_resource_dirs = brioche_resources::find_resource_dirs(&current_exe, true)
                 .context("error while finding resource dir")?;
-            Mode::AutowrapEnabled {
+            Mode::AutopackEnabled {
                 resource_dir,
                 all_resource_dirs,
             }
         }
     };
     let skip_unknown_libs = matches!(
-        std::env::var("BRIOCHE_LD_AUTOWRAP_SKIP_UNKNOWN_LIBS").as_deref(),
+        std::env::var("BRIOCHE_LD_AUTOPACK_SKIP_UNKNOWN_LIBS").as_deref(),
         Ok("true")
     );
 
@@ -111,36 +111,36 @@ fn run() -> eyre::Result<ExitCode> {
         return Ok(exit_code);
     }
 
-    match autowrap_mode {
-        Mode::AutowrapEnabled {
+    match autopack_mode {
+        Mode::AutopackEnabled {
             resource_dir,
             all_resource_dirs,
         } => {
-            let dynamic_linking_config = brioche_autowrap::DynamicLinkingConfig {
+            let dynamic_linking_config = brioche_autopack::DynamicLinkingConfig {
                 library_paths: library_search_paths,
                 skip_libraries: HashSet::new(),
                 extra_libraries: vec![],
                 skip_unknown_libraries: skip_unknown_libs,
             };
-            brioche_autowrap::autowrap(&brioche_autowrap::AutowrapConfig {
+            brioche_autopack::autopack(&brioche_autopack::AutopackConfig {
                 resource_dir,
                 all_resource_dirs,
-                inputs: brioche_autowrap::AutowrapInputs::Paths(vec![output_path]),
+                inputs: brioche_autopack::AutopackInputs::Paths(vec![output_path]),
                 quiet: true,
                 link_dependencies: vec![ld_resource_dir],
-                dynamic_binary: Some(brioche_autowrap::DynamicBinaryConfig {
+                dynamic_binary: Some(brioche_autopack::DynamicBinaryConfig {
                     packed_executable: packed_path,
                     extra_runtime_library_paths: vec![],
                     dynamic_linking: dynamic_linking_config.clone(),
                 }),
-                shared_library: Some(brioche_autowrap::SharedLibraryConfig {
+                shared_library: Some(brioche_autopack::SharedLibraryConfig {
                     dynamic_linking: dynamic_linking_config,
                 }),
-                rewrap: None,
+                repack: None,
                 script: None,
             })?;
         }
-        Mode::AutowrapDisabled => {
+        Mode::AutopackDisabled => {
             // We already wrote the binary, so nothing to do
         }
     };
