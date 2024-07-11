@@ -1,7 +1,11 @@
 use std::{os::unix::fs::OpenOptionsExt as _, path::PathBuf, process::ExitCode};
 
 use clap::Parser;
+use eyre::{Context as _, OptionExt as _};
 
+mod autowrap_template;
+
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Parser)]
 enum Args {
     Pack {
@@ -12,24 +16,38 @@ enum Args {
         #[arg(long)]
         pack: String,
     },
-    Autowrap {
-        #[arg(long)]
-        packed_exec: PathBuf,
-        #[arg(long)]
-        sysroot: PathBuf,
-        #[arg(short = 'L', long = "lib-dir")]
-        lib_dirs: Vec<PathBuf>,
-        #[arg(long)]
-        skip_lib: Vec<String>,
-        #[arg(long)]
-        skip_unknown_libs: bool,
-        #[arg(long)]
-        runtime_lib_dir: Vec<PathBuf>,
-        programs: Vec<PathBuf>,
-    },
+    Autowrap(AutowrapArgs),
     Read {
         program: PathBuf,
     },
+}
+
+impl std::str::FromStr for AutowrapTemplateValue {
+    type Err = eyre::Error;
+
+    fn from_str(s: &str) -> eyre::Result<Self> {
+        let (name, value) = s
+            .split_once('=')
+            .ok_or_else(|| eyre::eyre!("expected `<NAME>=<TYPE>:<VALUE>` format"))?;
+        let (ty, value) = value
+            .split_once(':')
+            .ok_or_else(|| eyre::eyre!("expected `<NAME>=<TYPE>:<VALUE>` format"))?;
+
+        let value = match ty {
+            "path" => {
+                let value = PathBuf::from(value);
+                autowrap_template::TemplateVariableValue::Path(value)
+            }
+            _ => {
+                eyre::bail!("unknown type {ty:?}, expected \"path\"");
+            }
+        };
+
+        Ok(Self {
+            name: name.to_string(),
+            value,
+        })
+    }
 }
 
 fn main() -> ExitCode {
@@ -37,13 +55,14 @@ fn main() -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
-            eprintln!("{err}");
+            eprintln!("{err:#}");
             ExitCode::FAILURE
         }
     }
 }
 
-fn run() -> Result<(), PackerError> {
+fn run() -> eyre::Result<()> {
+    color_eyre::install()?;
     let args = Args::parse();
 
     match args {
@@ -52,7 +71,7 @@ fn run() -> Result<(), PackerError> {
             output,
             pack,
         } => {
-            let pack = serde_json::from_str(&pack).map_err(PackerError::DeserializePack)?;
+            let pack = serde_json::from_str(&pack)?;
 
             let mut packed = std::fs::File::open(packed)?;
             let mut output = std::fs::OpenOptions::new()
@@ -66,52 +85,14 @@ fn run() -> Result<(), PackerError> {
 
             brioche_pack::inject_pack(&mut output, &pack)?;
         }
-        Args::Autowrap {
-            packed_exec,
-            sysroot,
-            lib_dirs,
-            programs,
-            skip_lib,
-            skip_unknown_libs,
-            runtime_lib_dir,
-        } => {
-            for program in &programs {
-                let resource_dir =
-                    brioche_resources::find_output_resource_dir(program).map_err(|error| {
-                        PackerError::PackResourceDir {
-                            program: program.clone(),
-                            error,
-                        }
-                    })?;
-                let all_resource_dirs = brioche_resources::find_resource_dirs(program, true)
-                    .map_err(|error| PackerError::PackResourceDir {
-                        program: program.clone(),
-                        error,
-                    })?;
-                brioche_autowrap::autowrap(brioche_autowrap::AutowrapOptions {
-                    program_path: program,
-                    packed_exec_path: &packed_exec,
-                    resource_dir: &resource_dir,
-                    all_resource_dirs: &all_resource_dirs,
-                    library_search_paths: &lib_dirs,
-                    input_paths: &[],
-                    sysroot: &sysroot,
-                    skip_libs: &skip_lib,
-                    skip_unknown_libs,
-                    runtime_library_dirs: &runtime_lib_dir,
-                })
-                .map_err(|error| PackerError::Autowrap {
-                    program: program.clone(),
-                    error,
-                })?;
-            }
+        Args::Autowrap(args) => {
+            run_autowrap(args)?;
         }
         Args::Read { program } => {
             let mut program = std::fs::File::open(program)?;
-            let pack = brioche_pack::extract_pack(&mut program)?;
+            let extracted = brioche_pack::extract_pack(&mut program)?;
 
-            serde_json::to_writer_pretty(std::io::stdout().lock(), &pack)
-                .map_err(PackerError::SerializePack)?;
+            serde_json::to_writer_pretty(std::io::stdout().lock(), &extracted.pack)?;
             println!();
         }
     }
@@ -119,28 +100,68 @@ fn run() -> Result<(), PackerError> {
     Ok(())
 }
 
-#[derive(Debug, thiserror::Error)]
-enum PackerError {
-    #[error("{0}")]
-    Io(#[from] std::io::Error),
-    #[error("error deserializing pack: {0}")]
-    DeserializePack(#[source] serde_json::Error),
-    #[error("error serializing pack: {0}")]
-    SerializePack(#[source] serde_json::Error),
-    #[error("{0}")]
-    InjectPack(#[from] brioche_pack::InjectPackError),
-    #[error("{0}")]
-    ExtractPack(#[from] brioche_pack::ExtractPackError),
-    #[error("error wrapping {program}: {error}")]
-    PackResourceDir {
-        program: PathBuf,
-        #[source]
-        error: brioche_resources::PackResourceDirError,
-    },
-    #[error("error wrapping {program}: {error}")]
-    Autowrap {
-        program: PathBuf,
-        #[source]
-        error: brioche_autowrap::AutowrapError,
-    },
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug, Parser)]
+struct AutowrapArgs {
+    #[arg(long)]
+    schema: bool,
+
+    #[arg(required_unless_present = "schema")]
+    recipe_path: Option<PathBuf>,
+
+    #[arg(long, required_unless_present = "schema")]
+    config: Option<String>,
+
+    #[arg(long = "var", value_parser)]
+    variables: Vec<AutowrapTemplateValue>,
+}
+
+#[derive(Debug, Clone)]
+struct AutowrapTemplateValue {
+    name: String,
+    value: autowrap_template::TemplateVariableValue,
+}
+
+fn run_autowrap(args: AutowrapArgs) -> eyre::Result<()> {
+    if args.schema {
+        let schema = schemars::schema_for!(autowrap_template::AutowrapConfigTemplate);
+        serde_json::to_writer_pretty(std::io::stdout().lock(), &schema)?;
+        println!();
+        return Ok(());
+    }
+
+    let recipe_path = args.recipe_path.ok_or_eyre("missing RECIPE_PATH")?;
+    let config = args.config.ok_or_eyre("missing --config")?;
+
+    let config_template =
+        serde_json::from_str::<autowrap_template::AutowrapConfigTemplate>(&config);
+    let config_template = match config_template {
+        Ok(config_template) => config_template,
+        Err(err) => {
+            return Err(err)
+                .context("failed to parse config template (pass --schema to show schema)");
+        }
+    };
+
+    let variables = args
+        .variables
+        .into_iter()
+        .map(|variable| (variable.name, variable.value))
+        .collect();
+
+    // HACK: Workaround because finding a resource dir takes a program
+    // path rather than a directory path, but then gets the parent path
+    let program = recipe_path.join("program");
+
+    let resource_dir = brioche_resources::find_output_resource_dir(&program)?;
+
+    let ctx = &autowrap_template::AutowrapConfigTemplateContext {
+        variables,
+        resource_dir,
+    };
+    let config = config_template.build(ctx, recipe_path)?;
+
+    brioche_autowrap::autowrap(&config)?;
+
+    Ok(())
 }

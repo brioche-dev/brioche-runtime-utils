@@ -1,14 +1,21 @@
 use std::path::{Path, PathBuf};
 
-use bstr::ByteSlice as _;
+use bstr::{ByteSlice as _, ByteVec as _};
 use encoding::TickEncoded;
 
-mod encoding;
+pub mod encoding;
 
 pub const FORMAT: &str = "application/vnd.brioche.runnable-v0.1.0+json";
 
 #[serde_with::serde_as]
-#[derive(Debug, serde::Serialize, serde::Deserialize, bincode::Encode, bincode::Decode)]
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+    bincode::Encode,
+    bincode::Decode,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct Runnable {
     pub command: Template,
@@ -21,9 +28,19 @@ pub struct Runnable {
     pub env: Vec<(String, EnvValue)>,
 
     pub clear_env: bool,
+
+    #[serde(default)]
+    pub source: Option<RunnableSource>,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize, bincode::Encode, bincode::Decode)]
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+    bincode::Encode,
+    bincode::Decode,
+)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "type")]
 pub enum ArgValue {
@@ -35,13 +52,26 @@ pub enum ArgValue {
 }
 
 #[serde_with::serde_as]
-#[derive(Debug, serde::Serialize, serde::Deserialize, bincode::Encode, bincode::Decode)]
+#[derive(
+    Debug,
+    Clone,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+    bincode::Encode,
+    bincode::Decode,
+)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "type")]
 pub enum EnvValue {
     Clear,
+    Inherit,
     #[serde(rename_all = "camelCase")]
     Set {
+        value: Template,
+    },
+    #[serde(rename_all = "camelCase")]
+    Fallback {
         value: Template,
     },
     #[serde(rename_all = "camelCase")]
@@ -59,13 +89,40 @@ pub enum EnvValue {
 }
 
 #[serde_with::serde_as]
-#[derive(Debug, serde::Serialize, serde::Deserialize, bincode::Encode, bincode::Decode)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+    bincode::Encode,
+    bincode::Decode,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct Template {
-    components: Vec<TemplateComponent>,
+    pub components: Vec<TemplateComponent>,
 }
 
 impl Template {
+    pub fn from_literal(value: Vec<u8>) -> Self {
+        if value.is_empty() {
+            Self::default()
+        } else {
+            Self {
+                components: vec![TemplateComponent::Literal { value }],
+            }
+        }
+    }
+
+    pub fn from_resource_path(resource_path: PathBuf) -> Result<Self, RunnableTemplateError> {
+        let resource = Vec::<u8>::from_path_buf(resource_path)
+            .map_err(|_| RunnableTemplateError::PathError)?;
+        Ok(Self {
+            components: vec![TemplateComponent::Resource { resource }],
+        })
+    }
+
     pub fn to_os_string(
         &self,
         program: &Path,
@@ -105,7 +162,15 @@ impl Template {
 }
 
 #[serde_with::serde_as]
-#[derive(Debug, serde::Serialize, serde::Deserialize, bincode::Encode, bincode::Decode)]
+#[derive(
+    Debug,
+    Clone,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+    bincode::Encode,
+    bincode::Decode,
+)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "type")]
 pub enum TemplateComponent {
@@ -125,15 +190,65 @@ pub enum TemplateComponent {
         resource: Vec<u8>,
     },
 }
+#[serde_with::serde_as]
+#[derive(
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+    bincode::Encode,
+    bincode::Decode,
+)]
+#[serde(rename_all = "camelCase")]
+pub struct RunnableSource {
+    pub path: RunnablePath,
+}
+
+#[serde_with::serde_as]
+#[derive(
+    Debug,
+    Clone,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+    bincode::Encode,
+    bincode::Decode,
+)]
+#[serde(rename_all = "snake_case")]
+#[serde(tag = "type")]
+pub enum RunnablePath {
+    #[serde(rename_all = "camelCase")]
+    RelativePath {
+        #[serde_as(as = "TickEncoded")]
+        path: Vec<u8>,
+    },
+    #[serde(rename_all = "camelCase")]
+    Resource {
+        #[serde_as(as = "TickEncoded")]
+        resource: Vec<u8>,
+    },
+}
+
+impl RunnablePath {
+    pub fn from_resource_path(resource_path: PathBuf) -> Result<Self, RunnableTemplateError> {
+        let resource = Vec::<u8>::from_path_buf(resource_path)
+            .map_err(|_| RunnableTemplateError::PathError)?;
+        Ok(Self::Resource { resource })
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum RunnableTemplateError {
     #[error("invalid UTF-8 in runnable template: {0}")]
     Utf8Error(#[from] bstr::Utf8Error),
+    #[error("invalid path in runnable template")]
+    PathError,
     #[error("invalid program path")]
     InvalidProgramPath,
     #[error(transparent)]
     PackResourceDirError(#[from] brioche_resources::PackResourceDirError),
     #[error("resource not found: {resource}")]
     ResourceNotFound { resource: bstr::BString },
+    #[error("tried prepending and appending to env var")]
+    PrependAndAppend,
 }

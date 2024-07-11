@@ -1,5 +1,6 @@
 use std::{
-    os::unix::fs::OpenOptionsExt as _,
+    io::Write as _,
+    os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _},
     path::{Path, PathBuf},
 };
 
@@ -32,9 +33,8 @@ pub fn find_resource_dirs(
         }
     }
 
-    match find_resource_dir_from_program(program) {
-        Ok(pack_resource_dir) => paths.push(pack_resource_dir),
-        Err(PackResourceDirError::NotFound) => {}
+    match find_resource_dirs_from_program(program, &mut paths) {
+        Ok(()) | Err(PackResourceDirError::NotFound) => {}
         Err(error) => {
             return Err(error);
         }
@@ -67,27 +67,40 @@ pub fn find_in_resource_dirs(resource_dirs: &[PathBuf], subpath: &Path) -> Optio
     None
 }
 
-fn find_resource_dir_from_program(program: &Path) -> Result<PathBuf, PackResourceDirError> {
+fn find_resource_dirs_from_program(
+    program: &Path,
+    resource_dirs: &mut Vec<PathBuf>,
+) -> Result<(), PackResourceDirError> {
     let program = std::env::current_dir()?.join(program);
 
     let Some(mut current_dir) = program.parent() else {
         return Err(PackResourceDirError::NotFound);
     };
 
+    let mut found = false;
+    let mut reached_end = false;
     for _ in 0..SEARCH_DEPTH_LIMIT {
         let pack_resource_dir = current_dir.join("brioche-resources.d");
         if pack_resource_dir.is_dir() {
-            return Ok(pack_resource_dir);
+            resource_dirs.push(pack_resource_dir);
+            found = true;
         }
 
         let Some(parent) = current_dir.parent() else {
-            return Err(PackResourceDirError::NotFound);
+            reached_end = true;
+            break;
         };
 
         current_dir = parent;
     }
 
-    Err(PackResourceDirError::DepthLimitReached)
+    if found {
+        Ok(())
+    } else if reached_end {
+        Err(PackResourceDirError::NotFound)
+    } else {
+        Err(PackResourceDirError::DepthLimitReached)
+    }
 }
 
 pub fn add_named_blob(
@@ -136,6 +149,73 @@ pub fn add_named_blob(
         .expect("alias path is not in resource dir");
     Ok(alias_path.to_owned())
 }
+pub fn add_named_resource_directory(
+    resource_dir: &Path,
+    source: &Path,
+    hint_name: &str,
+) -> Result<PathBuf, AddNamedDirectoryError> {
+    let resources_directories_dir = resource_dir.join("directories");
+    std::fs::create_dir_all(&resources_directories_dir)?;
+
+    let temp_name = ulid::Ulid::new().to_string();
+    let temp_path = resources_directories_dir.join(temp_name);
+    copy_dir::copy_dir(source, &temp_path)?;
+
+    let directory_hash = hash_directory(&temp_path)?;
+    let directory_name = format!("{directory_hash}.d");
+    let hashed_path = resources_directories_dir.join(&directory_name);
+    std::fs::rename(&temp_path, &hashed_path)?;
+
+    let alias_dir = resource_dir.join("aliases").join(hint_name);
+    std::fs::create_dir_all(&alias_dir)?;
+    let alias_path = alias_dir.join(&directory_name);
+
+    let hashed_relative_path = pathdiff::diff_paths(hashed_path, &alias_dir)
+        .expect("hashed path is not a prefix of alias path");
+    std::os::unix::fs::symlink(hashed_relative_path, &alias_path)?;
+
+    let alias_path = alias_path
+        .strip_prefix(resource_dir)
+        .expect("alias path not in resource dir");
+    Ok(alias_path.to_owned())
+}
+
+fn hash_directory(path: &Path) -> Result<blake3::Hash, std::io::Error> {
+    let walkdir = walkdir::WalkDir::new(path).sort_by_file_name();
+    let mut hasher = blake3::Hasher::new();
+
+    for entry in walkdir {
+        let entry = entry?;
+        let entry_path = entry.path();
+        let metadata = entry.metadata()?;
+        let file_type = metadata.file_type();
+        let entry_path_encoded = entry_path.as_os_str().as_encoded_bytes();
+        let entry_path_encoded = tick_encoding::encode(entry_path_encoded);
+
+        if file_type.is_file() {
+            let file_len = metadata.len();
+            let permissions = metadata.permissions();
+            let mode = permissions.mode();
+            let is_executable = mode & 0o111 != 0;
+            let mut file = std::fs::File::open(path.join(entry_path))?;
+
+            writeln!(hasher, "f:{entry_path_encoded}:{file_len}:{is_executable}")?;
+            std::io::copy(&mut file, &mut hasher)?;
+        } else if file_type.is_dir() {
+            writeln!(hasher, "d:{entry_path_encoded}")?;
+        } else if file_type.is_symlink() {
+            let target = std::fs::read_link(path.join(entry_path))?;
+            let target = target.as_os_str().as_encoded_bytes();
+            let target = tick_encoding::encode(target);
+            let target_len = target.len();
+            writeln!(hasher, "s:{entry_path_encoded}:{target_len}")?;
+            hasher.write_all(target.as_bytes())?;
+        }
+    }
+
+    let hash = hasher.finalize();
+    Ok(hash)
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum PackResourceDirError {
@@ -149,6 +229,12 @@ pub enum PackResourceDirError {
 
 #[derive(Debug, thiserror::Error)]
 pub enum AddBlobError {
-    #[error("{0}")]
+    #[error(transparent)]
+    IoError(#[from] std::io::Error),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum AddNamedDirectoryError {
+    #[error(transparent)]
     IoError(#[from] std::io::Error),
 }

@@ -24,9 +24,9 @@ fn run() -> Result<(), PackedError> {
         })?;
     let resource_dirs = brioche_resources::find_resource_dirs(&program_path, true)?;
     let mut program = std::fs::File::open(&program_path)?;
-    let pack = brioche_pack::extract_pack(&mut program)?;
+    let extracted = brioche_pack::extract_pack(&mut program)?;
 
-    match pack {
+    match extracted.pack {
         brioche_pack::Pack::LdLinux {
             program,
             interpreter,
@@ -175,8 +175,23 @@ fn run() -> Result<(), PackedError> {
                         runnable_core::EnvValue::Clear => {
                             command.env_remove(env_name);
                         }
+                        runnable_core::EnvValue::Inherit => {
+                            let value = std::env::var_os(env_name);
+                            if let Some(value) = value {
+                                command.env(env_name, value);
+                            }
+                        }
                         runnable_core::EnvValue::Set { value } => {
                             let value = value.to_os_string(&program_path, &resource_dirs)?;
+                            command.env(env_name, value);
+                        }
+                        runnable_core::EnvValue::Fallback { value } => {
+                            let current_value = std::env::var_os(env_name);
+                            let current_value = current_value.filter(|value| !value.is_empty());
+                            let value = match current_value {
+                                Some(current_value) => current_value,
+                                None => value.to_os_string(&program_path, &resource_dirs)?,
+                            };
                             command.env(env_name, value);
                         }
                         runnable_core::EnvValue::Prepend { value, separator } => {
