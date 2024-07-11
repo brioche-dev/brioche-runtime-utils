@@ -40,6 +40,7 @@ pub struct DynamicLinkingConfig {
 #[derive(Debug, Clone)]
 pub struct DynamicBinaryConfig {
     pub packed_executable: PathBuf,
+    pub extra_runtime_library_paths: Vec<PathBuf>,
     pub dynamic_linking: DynamicLinkingConfig,
 }
 
@@ -262,6 +263,10 @@ fn autowrap_dynamic_binary(
         return Ok(false);
     };
 
+    let output_path_parent = output_path
+        .parent()
+        .ok_or_eyre("could not get parent of output path")?;
+
     let contents = std::fs::read(source_path)?;
     let program_object = goblin::Object::parse(&contents)?;
 
@@ -336,11 +341,21 @@ fn autowrap_dynamic_binary(
                 .map_err(|_| eyre::eyre!("invalid UTF-8 in path"))
         })
         .collect::<eyre::Result<Vec<_>>>()?;
+    let runtime_library_dirs = dynamic_binary_config
+        .extra_runtime_library_paths
+        .iter()
+        .map(|path| {
+            let path = pathdiff::diff_paths(path, output_path_parent).ok_or_else(|| eyre::eyre!("failed to get relative path from output path {output_path_parent:?} to runtime library path {path:?}"))?;
+            <Vec<u8>>::from_path_buf(path)
+                .map_err(|_| eyre::eyre!("invalid UTF-8 in path"))
+        })
+        .collect::<eyre::Result<Vec<_>>>()?;
+
     let pack = brioche_pack::Pack::LdLinux {
         program,
         interpreter,
         library_dirs,
-        runtime_library_dirs: vec![],
+        runtime_library_dirs,
     };
 
     let packed_exec_path = &dynamic_binary_config.packed_executable;

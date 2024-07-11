@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use bstr::ByteVec as _;
@@ -72,7 +72,9 @@ impl AutowrapConfigTemplate {
             .into_iter()
             .map(|path| path.build(ctx))
             .collect::<eyre::Result<Vec<_>>>()?;
-        let dynamic_binary = dynamic_binary.map(|opts| opts.build(ctx)).transpose()?;
+        let dynamic_binary = dynamic_binary
+            .map(|opts| opts.build(ctx, &recipe_path))
+            .transpose()?;
         let shared_library = shared_library.map(|opts| opts.build(ctx)).transpose()?;
         let script = script.map(|opts| opts.build(ctx)).transpose()?;
         let rewrap = rewrap.map(|opts| opts.build());
@@ -163,6 +165,9 @@ impl DynamicLinkingConfigTemplate {
 pub struct DynamicBinaryConfigTemplate {
     packed_executable: TemplatePath,
 
+    #[serde(default)]
+    extra_runtime_library_paths: Vec<PathBuf>,
+
     #[serde(flatten)]
     dynamic_linking: DynamicLinkingConfigTemplate,
 }
@@ -171,17 +176,32 @@ impl DynamicBinaryConfigTemplate {
     fn build(
         self,
         ctx: &AutowrapConfigTemplateContext,
+        recipe_path: &Path,
     ) -> eyre::Result<brioche_autowrap::DynamicBinaryConfig> {
         let Self {
             packed_executable,
+            extra_runtime_library_paths,
             dynamic_linking,
         } = self;
 
         let packed_executable = packed_executable.build(ctx)?;
         let dynamic_linking = dynamic_linking.build(ctx)?;
 
+        let extra_runtime_library_paths = extra_runtime_library_paths
+            .into_iter()
+            .map(|path| {
+                let path = recipe_path.join(path);
+                eyre::ensure!(
+                    path.starts_with(recipe_path),
+                    "path {path:?} is not relative to recipe path",
+                );
+                eyre::Ok(path)
+            })
+            .collect::<eyre::Result<_>>()?;
+
         Ok(brioche_autowrap::DynamicBinaryConfig {
             packed_executable,
+            extra_runtime_library_paths,
             dynamic_linking,
         })
     }

@@ -130,6 +130,7 @@ fn run() -> eyre::Result<ExitCode> {
                 link_dependencies: vec![ld_resource_dir],
                 dynamic_binary: Some(brioche_autowrap::DynamicBinaryConfig {
                     packed_executable: packed_path,
+                    extra_runtime_library_paths: vec![],
                     dynamic_linking: dynamic_linking_config.clone(),
                 }),
                 shared_library: Some(brioche_autowrap::SharedLibraryConfig {
