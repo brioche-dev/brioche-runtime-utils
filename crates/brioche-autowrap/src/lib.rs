@@ -308,12 +308,6 @@ fn autowrap_dynamic_binary(
         .libraries
         .iter()
         .copied()
-        .filter(|library| {
-            !dynamic_binary_config
-                .dynamic_linking
-                .skip_libraries
-                .contains(*library)
-        })
         .chain(
             dynamic_binary_config
                 .dynamic_linking
