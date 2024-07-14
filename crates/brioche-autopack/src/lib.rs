@@ -462,7 +462,7 @@ fn autopack_script(
 
     let mut arg = Some(arg).filter(|arg| !arg.is_empty());
     let mut command_name = command_path
-        .split(|c: char| matches!(c, '/' | '\\'))
+        .split(['/', '\\'])
         .last()
         .unwrap_or(command_path);
 
