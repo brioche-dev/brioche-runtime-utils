@@ -7,6 +7,6 @@ edition = "2021"
 brioche-autopack = { path = "../brioche-autopack" }
 brioche-pack = { workspace = true }
 brioche-resources = { path = "../brioche-resources" }
-bstr = "1.8.0"
+bstr = "1.9.1"
 eyre = "0.6.12"
-thiserror = "1.0.51"
+thiserror = "1.0.62"
