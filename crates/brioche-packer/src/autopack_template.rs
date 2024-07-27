@@ -76,7 +76,9 @@ impl AutopackConfigTemplate {
             .map(|opts| opts.build(ctx, &recipe_path))
             .transpose()?;
         let shared_library = shared_library.map(|opts| opts.build(ctx)).transpose()?;
-        let script = script.map(|opts| opts.build(ctx)).transpose()?;
+        let script = script
+            .map(|opts| opts.build(ctx, &recipe_path))
+            .transpose()?;
         let repack = repack.map(|opts| opts.build());
 
         if self_dependency {
@@ -243,6 +245,7 @@ impl ScriptConfigTemplate {
     fn build(
         self,
         ctx: &AutopackConfigTemplateContext,
+        recipe_path: &Path,
     ) -> eyre::Result<brioche_autopack::ScriptConfig> {
         let Self {
             packed_executable,
@@ -261,6 +264,7 @@ impl ScriptConfigTemplate {
 
         Ok(brioche_autopack::ScriptConfig {
             packed_executable,
+            base_path: Some(recipe_path.into()),
             env,
             clear_env,
         })

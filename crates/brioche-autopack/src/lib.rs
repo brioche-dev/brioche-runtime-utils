@@ -5,7 +5,7 @@ use std::{
 };
 
 use bstr::{ByteSlice as _, ByteVec as _};
-use eyre::{Context as _, OptionExt as _};
+use eyre::{Context as _, ContextCompat as _, OptionExt as _};
 
 #[derive(Debug, Clone)]
 pub struct AutopackConfig {
@@ -52,8 +52,97 @@ pub struct SharedLibraryConfig {
 #[derive(Debug, Clone)]
 pub struct ScriptConfig {
     pub packed_executable: PathBuf,
+    pub base_path: Option<PathBuf>,
     pub env: HashMap<String, runnable_core::EnvValue>,
     pub clear_env: bool,
+}
+
+impl ScriptConfig {
+    /// Returns an iterator of environment variables for autopacked scripts.
+    /// Relative paths in the env vars will be adjusted for `output_path`,
+    /// so that the paths stay relative to `base_path`.
+    ///
+    /// For example, if `base_path` is `/output` and `output_path` is
+    /// `/output/bin/hello`, then relative paths will be prepended with
+    /// a `../` so that they stay relative to `/output`.
+    pub fn env_for_output_path<'a>(
+        &'a self,
+        output_path: &'a Path,
+    ) -> impl Iterator<Item = eyre::Result<(String, runnable_core::EnvValue)>> + 'a {
+        self.env.iter().map(|(key, env_value)| {
+            let env_value = match env_value {
+                runnable_core::EnvValue::Clear => env_value.clone(),
+                runnable_core::EnvValue::Inherit => env_value.clone(),
+                runnable_core::EnvValue::Set { value } => {
+                    let value = relative_template(value, self.base_path.as_deref(), output_path)?;
+                    runnable_core::EnvValue::Set { value }
+                }
+                runnable_core::EnvValue::Fallback { value } => {
+                    let value = relative_template(value, self.base_path.as_deref(), output_path)?;
+                    runnable_core::EnvValue::Fallback { value }
+                }
+                runnable_core::EnvValue::Prepend { value, separator } => {
+                    let value = relative_template(value, self.base_path.as_deref(), output_path)?;
+                    runnable_core::EnvValue::Prepend {
+                        value,
+                        separator: separator.clone(),
+                    }
+                }
+                runnable_core::EnvValue::Append { value, separator } => {
+                    let value = relative_template(value, self.base_path.as_deref(), output_path)?;
+                    runnable_core::EnvValue::Append {
+                        value,
+                        separator: separator.clone(),
+                    }
+                }
+            };
+            eyre::Ok((key.clone(), env_value))
+        })
+    }
+}
+
+fn relative_template(
+    value: &runnable_core::Template,
+    base_path: Option<&Path>,
+    output_path: &Path,
+) -> eyre::Result<runnable_core::Template> {
+    let Some(base_path) = base_path else {
+        return Ok(value.clone());
+    };
+    let output_path = base_path.join(output_path);
+    let output_dir = output_path
+        .parent()
+        .ok_or_else(|| eyre::eyre!("failed to get parent of output path"))?;
+
+    let components = value
+        .components
+        .iter()
+        .map(|component| -> eyre::Result<_> {
+            match component {
+                runnable_core::TemplateComponent::Literal { .. }
+                | runnable_core::TemplateComponent::Resource { .. } => eyre::Ok(component.clone()),
+                runnable_core::TemplateComponent::RelativePath { path } => {
+                    let path = path
+                        .to_path()
+                        .with_context(|| format!("failed to parse path {path:?}"))?;
+
+                    let full_path = base_path.join(path);
+                    let new_relative_path = pathdiff::diff_paths(full_path, output_dir)
+                        .context("failed to get path relative to output dir")?;
+                    let new_relative_path = <Vec<u8>>::from_path_buf(new_relative_path).map_err(
+                        |new_relative_path| {
+                            eyre::eyre!("failed to convert path {new_relative_path:?}")
+                        },
+                    )?;
+
+                    eyre::Ok(runnable_core::TemplateComponent::RelativePath {
+                        path: new_relative_path,
+                    })
+                }
+            }
+        })
+        .collect::<eyre::Result<Vec<_>>>()?;
+    Ok(runnable_core::Template { components })
 }
 
 #[derive(Debug, Clone)]
@@ -533,10 +622,8 @@ fn autopack_script(
     args.push(runnable_core::ArgValue::Rest);
 
     let env = script_config
-        .env
-        .iter()
-        .map(|(key, value)| (key.clone(), value.clone()))
-        .collect();
+        .env_for_output_path(output_path)
+        .collect::<eyre::Result<_>>()?;
 
     let runnable_pack = runnable_core::Runnable {
         command,
