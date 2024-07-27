@@ -122,6 +122,9 @@ fn relative_template(
                 runnable_core::TemplateComponent::Literal { .. }
                 | runnable_core::TemplateComponent::Resource { .. } => eyre::Ok(component.clone()),
                 runnable_core::TemplateComponent::RelativePath { path } => {
+                    // TODO: Handle path resolution in a cross-platform way.
+                    // This could change based on the host platform
+
                     let path = path
                         .to_path()
                         .with_context(|| format!("failed to parse path {path:?}"))?;
