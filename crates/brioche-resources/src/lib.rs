@@ -149,11 +149,11 @@ pub fn add_named_blob(
         .expect("alias path is not in resource dir");
     Ok(alias_path.to_owned())
 }
-pub fn add_named_resource_directory(
+
+pub fn add_resource_directory(
     resource_dir: &Path,
     source: &Path,
-    hint_name: &str,
-) -> Result<PathBuf, AddNamedDirectoryError> {
+) -> Result<PathBuf, AddDirectoryError> {
     let resources_directories_dir = resource_dir.join("directories");
     std::fs::create_dir_all(&resources_directories_dir)?;
 
@@ -164,11 +164,25 @@ pub fn add_named_resource_directory(
     let directory_hash = hash_directory(&temp_path)?;
     let directory_name = format!("{directory_hash}.d");
     let hashed_path = resources_directories_dir.join(&directory_name);
-    std::fs::rename(&temp_path, &hashed_path)?;
+    std::fs::rename(&temp_path, hashed_path)?;
+
+    let resource_path = Path::new("directories").join(directory_name);
+    Ok(resource_path)
+}
+
+pub fn add_named_resource_directory(
+    resource_dir: &Path,
+    source: &Path,
+    hint_name: &str,
+) -> Result<PathBuf, AddDirectoryError> {
+    let hashed_path = add_resource_directory(resource_dir, source)?;
+    let directory_name = hashed_path
+        .file_name()
+        .expect("failed to get resource directory name");
 
     let alias_dir = resource_dir.join("aliases").join(hint_name);
     std::fs::create_dir_all(&alias_dir)?;
-    let alias_path = alias_dir.join(&directory_name);
+    let alias_path = alias_dir.join(directory_name);
 
     let hashed_relative_path = pathdiff::diff_paths(hashed_path, &alias_dir)
         .expect("hashed path is not a prefix of alias path");
@@ -234,7 +248,7 @@ pub enum AddBlobError {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum AddNamedDirectoryError {
+pub enum AddDirectoryError {
     #[error(transparent)]
     IoError(#[from] std::io::Error),
 }
