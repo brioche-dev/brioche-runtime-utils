@@ -424,17 +424,7 @@ fn autopack_dynamic_binary(
     })?;
 
     // Autopack the interpreter if it's pending
-    let canonical_interpreter_path = interpreter_path
-        .canonicalize()
-        .with_context(|| format!("failed to canonicalize interpreter path {interpreter_path:?}"))?;
-    if let Some(interpreter_path_config) = pending_paths.remove(&canonical_interpreter_path) {
-        autopack_path(
-            ctx,
-            &interpreter_path,
-            &interpreter_path_config,
-            pending_paths,
-        )?;
-    }
+    try_autopack_dependency(ctx, &interpreter_path, pending_paths)?;
 
     let interpreter_resource_path = add_named_blob_from(ctx, &interpreter_path, None)
         .with_context(|| format!("failed to add resource for interpreter {interpreter_path:?}"))?;
@@ -621,10 +611,8 @@ fn autopack_script(
 
     let command = command.ok_or_else(|| eyre::eyre!("could not find command {command_name:?}"))?;
 
-    // Autopack the command if it's still pending
-    if let Some(command_path_options) = pending_paths.remove(&command) {
-        autopack_path(ctx, &command, &command_path_options, pending_paths)?;
-    }
+    // Autopack the command if it's pending
+    try_autopack_dependency(ctx, &command, pending_paths)?;
 
     let command_resource = add_named_blob_from(ctx, &command, None)?;
     let script_resource = add_named_blob_from(ctx, source_path, None)?;
@@ -857,12 +845,7 @@ fn collect_all_library_dirs(
         };
 
         // Autopack the library if it's pending
-        let canonical_library_path = library_path
-            .canonicalize()
-            .with_context(|| format!("failed to canonicalize library path {library_path:?}"))?;
-        if let Some(library_path_config) = pending_paths.remove(&canonical_library_path) {
-            autopack_path(ctx, &library_path, &library_path_config, pending_paths)?;
-        }
+        try_autopack_dependency(ctx, &library_path, pending_paths)?;
 
         found_libraries.insert(library_name.clone());
 
@@ -1024,4 +1007,22 @@ fn add_named_blob_from(
         alias_name,
     )?;
     Ok(resource_path)
+}
+
+fn try_autopack_dependency(
+    ctx: &AutopackContext,
+    path: &Path,
+    pending_paths: &mut BTreeMap<PathBuf, AutopackPathConfig>,
+) -> eyre::Result<()> {
+    // Get the canonical path of the dependency
+    let canonical_path = path
+        .canonicalize()
+        .with_context(|| format!("failed to canonicalize path {path:?}"))?;
+
+    // If the path is pending, then autopack it
+    if let Some(path_config) = pending_paths.remove(&canonical_path) {
+        autopack_path(ctx, path, &path_config, pending_paths)?;
+    }
+
+    Ok(())
 }
