@@ -29,6 +29,9 @@ pub struct AutopackConfigTemplate {
     globs: Vec<String>,
 
     #[serde(default)]
+    exclude_globs: Vec<String>,
+
+    #[serde(default)]
     quiet: bool,
 
     #[serde(default)]
@@ -55,6 +58,7 @@ impl AutopackConfigTemplate {
         let Self {
             paths,
             globs,
+            exclude_globs,
             quiet,
             link_dependencies,
             self_dependency,
@@ -86,6 +90,10 @@ impl AutopackConfigTemplate {
         }
 
         let inputs = if globs.is_empty() {
+            eyre::ensure!(
+                exclude_globs.is_empty(),
+                "cannot exclude glob patterns with only paths"
+            );
             let paths = paths
                 .into_iter()
                 .map(|path| recipe_path.join(path))
@@ -95,6 +103,7 @@ impl AutopackConfigTemplate {
             eyre::ensure!(paths.is_empty(), "cannot include both paths and globs");
             brioche_autopack::AutopackInputs::Globs {
                 patterns: globs,
+                exclude_patterns: exclude_globs,
                 base_path: recipe_path.clone(),
             }
         };

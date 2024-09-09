@@ -26,6 +26,7 @@ pub enum AutopackInputs {
     Globs {
         base_path: PathBuf,
         patterns: Vec<String>,
+        exclude_patterns: Vec<String>,
     },
 }
 
@@ -170,13 +171,21 @@ pub fn autopack(config: &AutopackConfig) -> eyre::Result<()> {
         AutopackInputs::Globs {
             base_path,
             patterns,
+            exclude_patterns,
         } => {
             let mut globs = globset::GlobSetBuilder::new();
             for pattern in patterns {
                 globs.add(globset::Glob::new(pattern)?);
             }
 
+            let mut exclude_globs = globset::GlobSetBuilder::new();
+            for pattern in exclude_patterns {
+                exclude_globs.add(globset::Glob::new(pattern)?);
+            }
+
             let globs = globs.build()?;
+            let exclude_globs = exclude_globs.build()?;
+
             let walkdir = walkdir::WalkDir::new(base_path);
             for entry in walkdir {
                 let entry = entry?;
@@ -193,7 +202,9 @@ pub fn autopack(config: &AutopackConfig) -> eyre::Result<()> {
                         )
                     })?;
 
-                if globs.is_match(&relative_entry_path) {
+                if globs.is_match(&relative_entry_path)
+                    && !exclude_globs.is_match(&relative_entry_path)
+                {
                     pending_paths.insert(
                         entry.path().to_owned(),
                         AutopackPathConfig { can_skip: false },
