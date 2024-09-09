@@ -223,6 +223,9 @@ impl DynamicBinaryConfigTemplate {
 pub struct SharedLibraryConfigTemplate {
     #[serde(flatten)]
     dynamic_linking: DynamicLinkingConfigTemplate,
+
+    #[serde(default)]
+    allow_empty: bool,
 }
 
 impl SharedLibraryConfigTemplate {
@@ -230,11 +233,17 @@ impl SharedLibraryConfigTemplate {
         self,
         ctx: &AutopackConfigTemplateContext,
     ) -> eyre::Result<brioche_autopack::SharedLibraryConfig> {
-        let Self { dynamic_linking } = self;
+        let Self {
+            dynamic_linking,
+            allow_empty,
+        } = self;
 
         let dynamic_linking = dynamic_linking.build(ctx)?;
 
-        Ok(brioche_autopack::SharedLibraryConfig { dynamic_linking })
+        Ok(brioche_autopack::SharedLibraryConfig {
+            dynamic_linking,
+            allow_empty,
+        })
     }
 }
 

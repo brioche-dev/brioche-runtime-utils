@@ -48,6 +48,7 @@ pub struct DynamicBinaryConfig {
 #[derive(Debug, Clone)]
 pub struct SharedLibraryConfig {
     pub dynamic_linking: DynamicLinkingConfig,
+    pub allow_empty: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -559,6 +560,10 @@ fn autopack_shared_library(
         })
         .collect::<eyre::Result<Vec<_>>>()?;
     let pack = brioche_pack::Pack::Static { library_dirs };
+
+    if !pack.should_add_to_executable() && !shared_library_config.allow_empty {
+        return Ok(false);
+    }
 
     let file = if source_path == output_path {
         std::fs::OpenOptions::new().append(true).open(output_path)?
