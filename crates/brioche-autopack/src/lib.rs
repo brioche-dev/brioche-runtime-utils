@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
     io::{BufRead as _, Read as _, Write as _},
     path::{Path, PathBuf},
 };
@@ -151,18 +151,21 @@ fn relative_template(
 #[derive(Debug, Clone)]
 pub struct RepackConfig {}
 
+struct AutopackPathConfig {
+    can_skip: bool,
+}
+
 pub fn autopack(config: &AutopackConfig) -> eyre::Result<()> {
     let ctx = autopack_context(config)?;
+    let mut pending_paths = BTreeMap::<PathBuf, AutopackPathConfig>::new();
 
     match &config.inputs {
         AutopackInputs::Paths(paths) => {
-            for path in paths {
-                let did_pack = try_autopack_path(&ctx, path, path)?;
-                eyre::ensure!(did_pack, "failed to autopack path: {path:?}");
-                if !config.quiet {
-                    println!("autopacked {}", path.display());
-                }
-            }
+            pending_paths.extend(
+                paths
+                    .iter()
+                    .map(|path| (path.clone(), AutopackPathConfig { can_skip: true })),
+            );
         }
         AutopackInputs::Globs {
             base_path,
@@ -191,17 +194,17 @@ pub fn autopack(config: &AutopackConfig) -> eyre::Result<()> {
                     })?;
 
                 if globs.is_match(&relative_entry_path) {
-                    let did_pack = try_autopack_path(&ctx, entry.path(), entry.path())?;
-                    if !config.quiet {
-                        if did_pack {
-                            println!("autopacked {}", entry.path().display());
-                        } else {
-                            println!("skipped {}", entry.path().display());
-                        }
-                    }
+                    pending_paths.insert(
+                        entry.path().to_owned(),
+                        AutopackPathConfig { can_skip: false },
+                    );
                 }
             }
         }
+    }
+
+    while let Some((path, path_config)) = pending_paths.pop_first() {
+        autopack_path(&ctx, &path, &path_config, &mut pending_paths)?;
     }
 
     Ok(())
@@ -294,20 +297,47 @@ fn autopack_context(config: &AutopackConfig) -> eyre::Result<AutopackContext> {
     })
 }
 
+fn autopack_path(
+    ctx: &AutopackContext,
+    path: &Path,
+    path_config: &AutopackPathConfig,
+    pending_paths: &mut BTreeMap<PathBuf, AutopackPathConfig>,
+) -> eyre::Result<()> {
+    let did_pack = try_autopack_path(ctx, path, path, pending_paths)?;
+    if did_pack {
+        if !ctx.config.quiet {
+            println!("autopacked {}", path.display());
+        }
+    } else if !path_config.can_skip {
+        if !ctx.config.quiet {
+            println!("skipped {}", path.display());
+        }
+    } else {
+        eyre::bail!("failed to autopack path: {path:?}");
+    }
+
+    Ok(())
+}
+
 fn try_autopack_path(
     ctx: &AutopackContext,
     source_path: &Path,
     output_path: &Path,
+    pending_paths: &mut BTreeMap<PathBuf, AutopackPathConfig>,
 ) -> eyre::Result<bool> {
     let Some(kind) = autopack_kind(source_path)? else {
         return Ok(false);
     };
 
     match kind {
-        AutopackKind::DynamicBinary => autopack_dynamic_binary(ctx, source_path, output_path),
-        AutopackKind::SharedLibrary => autopack_shared_library(ctx, source_path, output_path),
-        AutopackKind::Script => autopack_script(ctx, source_path, output_path),
-        AutopackKind::Repack => autopack_repack(ctx, source_path, output_path),
+        AutopackKind::DynamicBinary => {
+            autopack_dynamic_binary(ctx, source_path, output_path, pending_paths)
+        }
+        AutopackKind::SharedLibrary => {
+            autopack_shared_library(ctx, source_path, output_path, pending_paths)
+        }
+        AutopackKind::Script => autopack_script(ctx, source_path, output_path, pending_paths),
+        AutopackKind::Repack => autopack_repack(ctx, source_path, output_path, pending_paths),
     }
 }
 
@@ -350,6 +380,7 @@ fn autopack_dynamic_binary(
     ctx: &AutopackContext,
     source_path: &Path,
     output_path: &Path,
+    pending_paths: &mut BTreeMap<PathBuf, AutopackPathConfig>,
 ) -> eyre::Result<bool> {
     let Some(dynamic_binary_config) = &ctx.config.dynamic_binary else {
         return Ok(false);
@@ -391,6 +422,17 @@ fn autopack_dynamic_binary(
     let interpreter_path = interpreter_path.ok_or_else(|| {
         eyre::eyre!("could not find interpreter for dynamic binary: {source_path:?}")
     })?;
+
+    // Autopack the interpreter if it's pending
+    if let Some(interpreter_path_config) = pending_paths.remove(&interpreter_path) {
+        autopack_path(
+            ctx,
+            &interpreter_path,
+            &interpreter_path_config,
+            pending_paths,
+        )?;
+    }
+
     let interpreter_resource_path = add_named_blob_from(ctx, &interpreter_path, None)
         .with_context(|| format!("failed to add resource for interpreter {interpreter_path:?}"))?;
     let program_resource_path = add_named_blob_from(ctx, source_path, None)
@@ -414,6 +456,7 @@ fn autopack_dynamic_binary(
         ctx,
         &dynamic_binary_config.dynamic_linking,
         needed_libraries,
+        pending_paths,
     )?;
 
     let program = <Vec<u8>>::from_path_buf(program_resource_path)
@@ -461,6 +504,7 @@ fn autopack_shared_library(
     ctx: &AutopackContext,
     source_path: &Path,
     output_path: &Path,
+    pending_paths: &mut BTreeMap<PathBuf, AutopackPathConfig>,
 ) -> eyre::Result<bool> {
     let Some(shared_library_config) = &ctx.config.shared_library else {
         return Ok(false);
@@ -500,6 +544,7 @@ fn autopack_shared_library(
         ctx,
         &shared_library_config.dynamic_linking,
         needed_libraries,
+        pending_paths,
     )?;
 
     let library_dirs = library_dir_resource_paths
@@ -527,6 +572,7 @@ fn autopack_script(
     ctx: &AutopackContext,
     source_path: &Path,
     output_path: &Path,
+    pending_paths: &mut BTreeMap<PathBuf, AutopackPathConfig>,
 ) -> eyre::Result<bool> {
     let Some(script_config) = &ctx.config.script else {
         return Ok(false);
@@ -571,6 +617,12 @@ fn autopack_script(
     }
 
     let command = command.ok_or_else(|| eyre::eyre!("could not find command {command_name:?}"))?;
+
+    // Autopack the command if it's still pending
+    if let Some(command_path_options) = pending_paths.remove(&command) {
+        autopack_path(ctx, &command, &command_path_options, pending_paths)?;
+    }
+
     let command_resource = add_named_blob_from(ctx, &command, None)?;
     let script_resource = add_named_blob_from(ctx, source_path, None)?;
 
@@ -661,6 +713,7 @@ fn autopack_repack(
     ctx: &AutopackContext,
     source_path: &Path,
     output_path: &Path,
+    pending_paths: &mut BTreeMap<PathBuf, AutopackPathConfig>,
 ) -> eyre::Result<bool> {
     let Some(_) = &ctx.config.repack else {
         return Ok(false);
@@ -756,7 +809,12 @@ fn autopack_repack(
         }
     }
 
-    let result = try_autopack_path(ctx, &unpacked_source_path, &unpacked_output_path)?;
+    let result = try_autopack_path(
+        ctx,
+        &unpacked_source_path,
+        &unpacked_output_path,
+        pending_paths,
+    )?;
     Ok(result)
 }
 
@@ -769,6 +827,7 @@ fn collect_all_library_dirs(
     ctx: &AutopackContext,
     dynamic_linking_config: &DynamicLinkingConfig,
     mut needed_libraries: VecDeque<String>,
+    pending_paths: &mut BTreeMap<PathBuf, AutopackPathConfig>,
 ) -> eyre::Result<Vec<PathBuf>> {
     let mut library_search_paths = vec![];
     let mut resource_library_dirs = vec![];
@@ -793,6 +852,11 @@ fn collect_all_library_dirs(
                 eyre::bail!("library not found: {library_name:?}");
             }
         };
+
+        // Autopack the library if it's pending
+        if let Some(library_path_config) = pending_paths.remove(&library_path) {
+            autopack_path(ctx, &library_path, &library_path_config, pending_paths)?;
+        }
 
         found_libraries.insert(library_name.clone());
 
