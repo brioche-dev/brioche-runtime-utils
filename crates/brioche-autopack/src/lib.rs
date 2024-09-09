@@ -424,7 +424,10 @@ fn autopack_dynamic_binary(
     })?;
 
     // Autopack the interpreter if it's pending
-    if let Some(interpreter_path_config) = pending_paths.remove(&interpreter_path) {
+    let canonical_interpreter_path = interpreter_path
+        .canonicalize()
+        .with_context(|| format!("failed to canonicalize interpreter path {interpreter_path:?}"))?;
+    if let Some(interpreter_path_config) = pending_paths.remove(&canonical_interpreter_path) {
         autopack_path(
             ctx,
             &interpreter_path,
@@ -854,7 +857,10 @@ fn collect_all_library_dirs(
         };
 
         // Autopack the library if it's pending
-        if let Some(library_path_config) = pending_paths.remove(&library_path) {
+        let canonical_library_path = library_path
+            .canonicalize()
+            .with_context(|| format!("failed to canonicalize library path {library_path:?}"))?;
+        if let Some(library_path_config) = pending_paths.remove(&canonical_library_path) {
             autopack_path(ctx, &library_path, &library_path_config, pending_paths)?;
         }
 
