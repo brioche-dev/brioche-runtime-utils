@@ -185,6 +185,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "brioche-cc"
+version = "0.1.0"
+dependencies = [
+ "eyre",
+]
+
+[[package]]
 name = "brioche-ld"
 version = "0.1.1"
 dependencies = [
