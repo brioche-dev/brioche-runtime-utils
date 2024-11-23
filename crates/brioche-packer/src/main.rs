@@ -20,6 +20,9 @@ enum Args {
     Read {
         program: PathBuf,
     },
+    SourcePath {
+        program: PathBuf,
+    },
 }
 
 impl std::str::FromStr for AutopackTemplateValue {
@@ -94,6 +97,28 @@ fn run() -> eyre::Result<()> {
 
             serde_json::to_writer_pretty(std::io::stdout().lock(), &extracted.pack)?;
             println!();
+        }
+        Args::SourcePath {
+            program: program_path,
+        } => {
+            let mut program = std::fs::File::open(&program_path)?;
+            let extracted = brioche_pack::extract_pack(&mut program)?;
+            let all_resource_dirs = brioche_resources::find_resource_dirs(&program_path, true)?;
+
+            let source_path =
+                brioche_autopack::pack_source(&program_path, &extracted.pack, &all_resource_dirs)
+                    .with_context(|| {
+                    format!("failed to get source path for {}", program_path.display())
+                })?;
+
+            match source_path {
+                brioche_autopack::PackSource::This => {
+                    println!("{}", program_path.display());
+                }
+                brioche_autopack::PackSource::Path(path) => {
+                    println!("{}", path.display());
+                }
+            }
         }
     }
 
