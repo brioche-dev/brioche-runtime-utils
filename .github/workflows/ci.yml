@@ -76,6 +76,7 @@ jobs:
         run: |
           cargo build \
             --all \
+            --bin brioche-cc \
             --bin brioche-ld \
             --bin brioche-packer \
             --release \
@@ -96,6 +97,7 @@ jobs:
           mkdir -p "artifacts/brioche/$PLATFORM/"
           mkdir -p "artifacts/brioche-runtime-utils/$PLATFORM/bin/"
           cp \
+            "target/$TOOLS_TARGET/release/brioche-cc" \
             "target/$TOOLS_TARGET/release/brioche-ld" \
             "target/$TOOLS_TARGET/release/brioche-packer" \
             "target/$TOOLS_TARGET/release-tiny/brioche-packed-plain-exec" \
