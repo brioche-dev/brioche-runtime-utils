@@ -7,6 +7,75 @@ use std::{
 use bstr::{ByteSlice as _, ByteVec as _};
 use eyre::{Context as _, ContextCompat as _, OptionExt as _};
 
+pub fn pack_source(
+    source_path: &Path,
+    pack: &brioche_pack::Pack,
+    all_resource_dirs: &[PathBuf],
+) -> eyre::Result<PackSource> {
+    let source = match pack {
+        brioche_pack::Pack::LdLinux { program, .. } => {
+            let program = program
+                .to_path()
+                .map_err(|_| eyre::eyre!("invalid program path: {}", bstr::BStr::new(&program)))?;
+            let program = brioche_resources::find_in_resource_dirs(all_resource_dirs, program)
+                .ok_or_else(|| eyre::eyre!("resource not found: {}", program.display()))?;
+
+            PackSource::Path(program)
+        }
+        brioche_pack::Pack::Static { .. } => PackSource::This,
+        brioche_pack::Pack::Metadata {
+            format,
+            metadata,
+            resource_paths: _,
+        } => {
+            if format == runnable_core::FORMAT {
+                let metadata: runnable_core::Runnable = serde_json::from_slice(metadata)
+                    .with_context(|| {
+                        format!("failed to deserialize runnable metadata: {metadata:?}")
+                    })?;
+                let Some(runnable_source) = metadata.source else {
+                    eyre::bail!("no source path in metadata");
+                };
+
+                let runnable_source_path = match runnable_source.path {
+                    runnable_core::RunnablePath::RelativePath { path } => {
+                        let path = path
+                            .to_path()
+                            .map_err(|_| eyre::eyre!("invalid relative path: {path:?}"))?;
+                        let new_source_path = source_path.join(path);
+
+                        eyre::ensure!(
+                            new_source_path.starts_with(source_path),
+                            "relative path {} escapes source path",
+                            path.display()
+                        );
+
+                        new_source_path
+                    }
+                    runnable_core::RunnablePath::Resource { resource } => {
+                        let resource = resource
+                            .to_path()
+                            .map_err(|_| eyre::eyre!("invalid resource path: {resource:?}"))?;
+                        brioche_resources::find_in_resource_dirs(all_resource_dirs, resource)
+                            .ok_or_else(|| eyre::eyre!("resource not found: {resource:?}"))?
+                    }
+                };
+
+                PackSource::Path(runnable_source_path)
+            } else {
+                eyre::bail!("unknown metadata format: {format:?}");
+            }
+        }
+    };
+
+    Ok(source)
+}
+
+pub enum PackSource {
+    This,
+    Path(PathBuf),
+}
+
 #[derive(Debug, Clone)]
 pub struct AutopackConfig {
     pub resource_dir: PathBuf,
@@ -729,73 +798,13 @@ fn autopack_repack(
     let contents = std::fs::read(source_path)?;
     let extracted = brioche_pack::extract_pack(std::io::Cursor::new(&contents))?;
 
-    let repack_source = match extracted.pack {
-        brioche_pack::Pack::LdLinux { program, .. } => {
-            let program = program
-                .to_path()
-                .map_err(|_| eyre::eyre!("invalid program path: {}", bstr::BStr::new(&program)))?;
-            let program =
-                brioche_resources::find_in_resource_dirs(&ctx.config.all_resource_dirs, program)
-                    .ok_or_else(|| eyre::eyre!("resource not found: {}", program.display()))?;
-
-            RepackSource::Path(program)
-        }
-        brioche_pack::Pack::Static { .. } => RepackSource::This,
-        brioche_pack::Pack::Metadata {
-            format,
-            metadata,
-            resource_paths: _,
-        } => {
-            if format == runnable_core::FORMAT {
-                let metadata: runnable_core::Runnable = serde_json::from_slice(&metadata)
-                    .with_context(|| {
-                        format!("failed to deserialize runnable metadata: {metadata:?}")
-                    })?;
-                let Some(runnable_source) = metadata.source else {
-                    eyre::bail!(
-                        "tried to repack {}, but no source was set",
-                        source_path.display()
-                    );
-                };
-
-                let runnable_source_path = match runnable_source.path {
-                    runnable_core::RunnablePath::RelativePath { path } => {
-                        let path = path
-                            .to_path()
-                            .map_err(|_| eyre::eyre!("invalid relative path: {path:?}"))?;
-                        let new_source_path = source_path.join(path);
-
-                        eyre::ensure!(
-                            new_source_path.starts_with(source_path),
-                            "relative path {} escapes source path",
-                            path.display()
-                        );
-
-                        new_source_path
-                    }
-                    runnable_core::RunnablePath::Resource { resource } => {
-                        let resource = resource
-                            .to_path()
-                            .map_err(|_| eyre::eyre!("invalid resource path: {resource:?}"))?;
-                        brioche_resources::find_in_resource_dirs(
-                            &ctx.config.all_resource_dirs,
-                            resource,
-                        )
-                        .ok_or_else(|| eyre::eyre!("resource not found: {resource:?}"))?
-                    }
-                };
-
-                RepackSource::Path(runnable_source_path)
-            } else {
-                eyre::bail!("tried to repack unknown metadata format: {format:?}");
-            }
-        }
-    };
+    let repack_source = pack_source(source_path, &extracted.pack, &ctx.config.all_resource_dirs)
+        .with_context(|| format!("failed to repack {}", source_path.display()))?;
 
     let unpacked_source_path;
     let unpacked_output_path;
     match repack_source {
-        RepackSource::This => {
+        PackSource::This => {
             // Write the unpacked contents to the output path
             let unpacked_contents = &contents[..extracted.unpacked_len];
             std::fs::write(output_path, unpacked_contents).with_context(|| {
@@ -809,7 +818,7 @@ fn autopack_repack(
             unpacked_source_path = output_path.to_owned();
             unpacked_output_path = output_path.to_owned();
         }
-        RepackSource::Path(path) => {
+        PackSource::Path(path) => {
             // Repack the source path and write to the output path
             unpacked_source_path = path;
             unpacked_output_path = output_path.to_owned();
@@ -823,11 +832,6 @@ fn autopack_repack(
         pending_paths,
     )?;
     Ok(result)
-}
-
-enum RepackSource {
-    This,
-    Path(PathBuf),
 }
 
 fn collect_all_library_dirs(
