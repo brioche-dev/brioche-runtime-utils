@@ -1,5 +1,11 @@
-use std::{os::unix::fs::OpenOptionsExt as _, path::PathBuf, process::ExitCode};
+use std::{
+    io::Seek as _,
+    os::unix::fs::OpenOptionsExt as _,
+    path::{Path, PathBuf},
+    process::ExitCode,
+};
 
+use bstr::{ByteSlice as _, ByteVec as _};
 use clap::Parser;
 use eyre::{Context as _, OptionExt as _};
 
@@ -23,6 +29,7 @@ enum Args {
     SourcePath {
         program: PathBuf,
     },
+    UpdateSource(UpdateSourceArgs),
 }
 
 impl std::str::FromStr for AutopackTemplateValue {
@@ -120,6 +127,9 @@ fn run() -> eyre::Result<()> {
                 }
             }
         }
+        Args::UpdateSource(args) => {
+            run_update_source(args)?;
+        }
     }
 
     Ok(())
@@ -189,4 +199,115 @@ fn run_autopack(args: AutopackArgs) -> eyre::Result<()> {
     brioche_autopack::autopack(&config)?;
 
     Ok(())
+}
+
+#[derive(Debug, Parser)]
+struct UpdateSourceArgs {
+    program: PathBuf,
+    #[arg(long)]
+    new_source: PathBuf,
+    #[arg(long)]
+    name: Option<String>,
+}
+
+fn run_update_source(args: UpdateSourceArgs) -> eyre::Result<()> {
+    let program = std::fs::File::open(&args.program)?;
+    let extracted = brioche_pack::extract_pack(program)?;
+    let output_resource_dir = brioche_resources::find_output_resource_dir(&args.program)?;
+
+    let (new_pack, unpacked_len) = match extracted.pack {
+        brioche_pack::Pack::LdLinux {
+            program,
+            interpreter,
+            library_dirs,
+            runtime_library_dirs,
+        } => {
+            let program = program
+                .to_path()
+                .map_err(|_| eyre::eyre!("invalid program path: {}", bstr::BStr::new(&program)))?;
+            let program_name = program
+                .file_name()
+                .ok_or_eyre("could not get program name from path")?;
+            let new_name = args
+                .name
+                .as_deref()
+                .map(Path::new)
+                .unwrap_or_else(|| Path::new(program_name));
+
+            let new_source = std::fs::File::open(&args.new_source).map_err(|_| {
+                eyre::eyre!("could not open new source {}", args.new_source.display())
+            })?;
+
+            let new_source_permissions = new_source.metadata()?.permissions();
+            let is_executable = is_executable(&new_source_permissions);
+
+            let new_source_resource = brioche_resources::add_named_blob(
+                &output_resource_dir,
+                &new_source,
+                is_executable,
+                new_name,
+            )?;
+            let new_source_resource = <Vec<u8>>::from_path_buf(new_source_resource)
+                .map_err(|_| eyre::eyre!("invalid UTF-8 in path"))?;
+
+            let new_pack = brioche_pack::Pack::LdLinux {
+                program: new_source_resource,
+                interpreter,
+                library_dirs,
+                runtime_library_dirs,
+            };
+            (new_pack, Some(extracted.unpacked_len))
+        }
+        brioche_pack::Pack::Static { library_dirs } => {
+            let pack = brioche_pack::Pack::Static { library_dirs };
+
+            if args.new_source.canonicalize()? != args.program.canonicalize()? {
+                std::fs::copy(&args.new_source, &args.program)?;
+            }
+
+            let program = std::fs::File::open(&args.program)?;
+            let new_source_extracted = brioche_pack::extract_pack(program);
+
+            if let Ok(new_source_extracted) = new_source_extracted {
+                (pack, Some(new_source_extracted.unpacked_len))
+            } else {
+                (pack, None)
+            }
+        }
+        brioche_pack::Pack::Metadata { format, .. } => {
+            // No metadata formats can be updated currently
+            eyre::bail!("unsupported metadata format: {format:?}");
+        }
+    };
+
+    let mut program = std::fs::OpenOptions::new()
+        .append(true)
+        .open(&args.program)?;
+    if let Some(unpacked_len) = unpacked_len {
+        program.set_len(unpacked_len.try_into()?)?;
+        program.seek(std::io::SeekFrom::End(0))?;
+    }
+
+    brioche_pack::inject_pack(&mut program, &new_pack)?;
+
+    Ok(())
+}
+
+pub fn is_executable(permissions: &std::fs::Permissions) -> bool {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    permissions.mode() & 0o100 != 0
+}
+
+pub fn without_pack(
+    mut contents: impl std::io::Read + std::io::Seek,
+) -> eyre::Result<impl std::io::Read> {
+    let content_length = contents.seek(std::io::SeekFrom::End(0))?;
+    contents.rewind()?;
+
+    if let Ok(extracted) = brioche_pack::extract_pack(&mut contents) {
+        Ok(contents.take(extracted.unpacked_len.try_into()?))
+    } else {
+        Ok(contents.take(content_length))
+    }
 }
