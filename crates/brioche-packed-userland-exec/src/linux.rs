@@ -75,8 +75,7 @@ fn run(args: &[&CStr], env_vars: &[&CStr]) -> Result<(), PackedError> {
             let program = program.canonicalize()?;
             let mut exec = userland_execve::ExecOptions::new(&interpreter);
 
-            let interpreter =
-                <[u8]>::from_path(&interpreter).ok_or(PackedError::InvalidPath)?;
+            let interpreter = <[u8]>::from_path(&interpreter).ok_or(PackedError::InvalidPath)?;
             let interpreter = CString::new(interpreter).map_err(|_| PackedError::InvalidPath)?;
 
             let mut resolved_library_dirs = vec![];
@@ -109,14 +108,13 @@ fn run(args: &[&CStr], env_vars: &[&CStr]) -> Result<(), PackedError> {
                         ld_library_path.push(b':');
                     }
 
-                    let path =
-                        <[u8]>::from_path(library_dir).ok_or(PackedError::InvalidPath)?;
+                    let path = <[u8]>::from_path(library_dir).ok_or(PackedError::InvalidPath)?;
                     ld_library_path.extend(path);
                 }
 
                 if let Some(env_library_path) = std::env::var_os("LD_LIBRARY_PATH") {
-                    let env_library_path = <[u8]>::from_os_str(&env_library_path)
-                        .ok_or(PackedError::InvalidPath)?;
+                    let env_library_path =
+                        <[u8]>::from_os_str(&env_library_path).ok_or(PackedError::InvalidPath)?;
                     if !env_library_path.is_empty() {
                         ld_library_path.push(b':');
                         ld_library_path.extend(env_library_path);
