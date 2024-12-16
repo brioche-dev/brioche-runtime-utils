@@ -135,7 +135,7 @@ fn run() -> eyre::Result<ExitCode> {
                 }),
                 shared_library: Some(brioche_autopack::SharedLibraryConfig {
                     dynamic_linking: dynamic_linking_config,
-                    allow_empty: false,
+                    allow_empty: true,
                 }),
                 repack: None,
                 script: None,
