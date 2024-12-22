@@ -127,48 +127,17 @@ fn run() -> eyre::Result<ExitCode> {
         }
     }
 
-    eprintln!("strip args: {strip_args:?}");
-
     let mut remapped_files = vec![];
     remap_files(&mut strip_args, &mut remapped_files)?;
-
-    eprintln!("remapped args: {strip_args:?}");
-    eprintln!("remapped files:");
-    for file in &remapped_files {
-        match file {
-            RemapFile::Inject {
-                pack,
-                temp_file,
-                output_path,
-            } => {
-                eprintln!("- inject {:?} -> {output_path:?}", temp_file.path());
-            }
-            RemapFile::UpdateSource {
-                extracted,
-                input_path,
-                temp_file,
-                output_path,
-            } => {
-                eprintln!(
-                    "- update_source {input_path:?} -> {:?} -> {output_path:?}",
-                    temp_file.path()
-                );
-            }
-        }
-    }
 
     let strip_args = strip_args
         .into_iter()
         .map(|arg| arg.into_args())
         .collect::<eyre::Result<Vec<_>>>()?;
 
-    eprintln!("running command");
-
     let mut command = std::process::Command::new(strip);
     command.args(strip_args.iter().flatten());
     let status = command.status()?;
-
-    eprintln!("status: {status}");
 
     if !status.success() {
         let exit_code = status
@@ -222,10 +191,6 @@ fn remap_files(args: &mut Vec<StripArg>, remapped_files: &mut Vec<RemapFile>) ->
             _ => unreachable!(),
         };
 
-        eprintln!("remapping input + output");
-        eprintln!("> input_path: {input_path:?}");
-        eprintln!("> output_path: {output_path:?}");
-
         let mut input = std::fs::File::open(&input_path)
             .with_context(|| format!("failed to open {}", input_path.display()))?;
         let extracted = brioche_pack::extract_pack(&mut input);
@@ -240,8 +205,6 @@ fn remap_files(args: &mut Vec<StripArg>, remapped_files: &mut Vec<RemapFile>) ->
                     .with_context(|| {
                         format!("failed to get source path for {}", input_path.display())
                     })?;
-
-            eprintln!("> got source path: {source_path:?}");
 
             match source_path {
                 brioche_autopack::PackSource::This => {
@@ -279,8 +242,6 @@ fn remap_files(args: &mut Vec<StripArg>, remapped_files: &mut Vec<RemapFile>) ->
             }
         }
     } else {
-        eprintln!("remapping inputs");
-
         for arg in args.iter_mut() {
             match arg {
                 StripArg::Arg(_) => {}
@@ -303,8 +264,6 @@ fn remap_files(args: &mut Vec<StripArg>, remapped_files: &mut Vec<RemapFile>) ->
                         .with_context(|| {
                             format!("failed to get source path for {}", path.display())
                         })?;
-
-                        eprintln!("> remapping {path:?}: {source_path:?}");
 
                         match source_path {
                             brioche_autopack::PackSource::This => {
@@ -357,8 +316,6 @@ fn finish_remapped_file(remapped_file: RemapFile) -> eyre::Result<()> {
             mut temp_file,
             output_path,
         } => {
-            eprintln!("injecting {:?} -> {output_path:?}", temp_file.path());
-
             let mut output = std::fs::File::create(output_path).with_context(|| {
                 format!("failed to open output {}", temp_file.path().display(),)
             })?;
@@ -374,11 +331,6 @@ fn finish_remapped_file(remapped_file: RemapFile) -> eyre::Result<()> {
             mut temp_file,
             output_path,
         } => {
-            eprintln!(
-                "updating source {input_path:?} -> {:?} -> {output_path:?}",
-                temp_file.path()
-            );
-
             let input_resource_dirs = brioche_resources::find_resource_dirs(&input_path, true)?;
             let output_resource_dir = brioche_resources::find_output_resource_dir(&output_path)?;
 
@@ -411,8 +363,6 @@ fn finish_remapped_file(remapped_file: RemapFile) -> eyre::Result<()> {
                         is_executable,
                         program_name,
                     )?;
-
-                    eprintln!("> replaced {program:?} with {new_source_resource:?}");
 
                     let new_source_resource = <Vec<u8>>::from_path_buf(new_source_resource)
                         .map_err(|_| eyre::eyre!("invalid UTF-8 in path"))?;
