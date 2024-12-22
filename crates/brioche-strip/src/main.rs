@@ -184,10 +184,15 @@ enum RemapFile {
 }
 
 fn remap_files(args: &mut Vec<StripArg>, remapped_files: &mut Vec<RemapFile>) -> eyre::Result<()> {
-    let output_path_index = args.iter().enumerate().find_map(|(n, arg)| match arg {
+    let mut output_path_indices = args.iter().enumerate().filter_map(|(n, arg)| match arg {
         StripArg::DashOPath(_) | StripArg::DashOFollowedByPath(_) => Some(n),
         _ => None,
     });
+    let output_path_index = output_path_indices.next();
+    eyre::ensure!(
+        output_path_indices.next().is_none(),
+        "-o argument specified multiple times"
+    );
 
     if let Some(output_path_index) = output_path_index {
         // Output path was specified. There should be one input path and
@@ -199,10 +204,16 @@ fn remap_files(args: &mut Vec<StripArg>, remapped_files: &mut Vec<RemapFile>) ->
         };
 
         // Get the input path
-        let input_path_index = args.iter().enumerate().find_map(|(n, arg)| match arg {
+        let mut input_path_indices = args.iter().enumerate().filter_map(|(n, arg)| match arg {
             StripArg::InputPath(_) => Some(n),
             _ => None,
         });
+        let input_path_index = input_path_indices.next();
+        eyre::ensure!(
+            input_path_indices.next().is_none(),
+            "multiple input paths specified with -o"
+        );
+
         let input_path_index = input_path_index.ok_or_eyre("input path not specified")?;
         let input_path = match &args[input_path_index] {
             StripArg::InputPath(path) => path.clone(),
