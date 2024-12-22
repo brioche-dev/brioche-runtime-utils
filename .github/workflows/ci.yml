@@ -90,6 +90,7 @@ jobs:
             --all \
             --bin brioche-cc \
             --bin brioche-ld \
+            --bin brioche-strip \
             --bin brioche-packer \
             --release \
             --target="$TOOLS_TARGET"
@@ -111,6 +112,7 @@ jobs:
           cp \
             "target/$TOOLS_TARGET/release/brioche-cc" \
             "target/$TOOLS_TARGET/release/brioche-ld" \
+            "target/$TOOLS_TARGET/release/brioche-strip" \
             "target/$TOOLS_TARGET/release/brioche-packer" \
             "target/$TOOLS_TARGET/release-tiny/brioche-packed-plain-exec" \
             "target/$TOOLS_TARGET/release-tiny/brioche-packed-userland-exec" \
