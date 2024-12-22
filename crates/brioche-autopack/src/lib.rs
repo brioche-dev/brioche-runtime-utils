@@ -71,6 +71,7 @@ pub fn pack_source(
     Ok(source)
 }
 
+#[derive(Debug)]
 pub enum PackSource {
     This,
     Path(PathBuf),

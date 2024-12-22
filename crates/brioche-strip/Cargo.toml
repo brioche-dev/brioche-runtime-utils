@@ -1,0 +1,14 @@
+[package]
+name = "brioche-strip"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+brioche-autopack = { path = "../brioche-autopack" }
+brioche-pack = { workspace = true }
+brioche-resources = { path = "../brioche-resources" }
+bstr = "1.8.0"
+eyre = "0.6.12"
+tempfile = "3.14.0"
+thiserror = "1.0.51"
+ulid = "1.1.3"
