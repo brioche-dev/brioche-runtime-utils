@@ -25,6 +25,9 @@ fn main() -> ExitCode {
 
 fn run() -> eyre::Result<ExitCode> {
     let current_exe = std::env::current_exe().context("failed to get current executable")?;
+    let current_exe_name = current_exe
+        .file_name()
+        .ok_or_eyre("failed to get current executable name")?;
     let current_exe_dir = current_exe
         .parent()
         .ok_or_eyre("failed to get current executable dir")?;
@@ -39,7 +42,10 @@ fn run() -> eyre::Result<ExitCode> {
         );
     }
 
-    let linker = ld_resource_dir.join("ld");
+    let mut original_exe_name = current_exe_name.to_owned();
+    original_exe_name.push("-orig");
+    let original_exe = current_exe.with_file_name(&original_exe_name);
+
     let packed_path = ld_resource_dir.join("brioche-packed");
 
     let mut output_path = PathBuf::from("a.out");
@@ -98,7 +104,7 @@ fn run() -> eyre::Result<ExitCode> {
         Ok("true")
     );
 
-    let mut command = std::process::Command::new(linker);
+    let mut command = std::process::Command::new(&original_exe);
     command.args(std::env::args_os().skip(1));
     let status = command.status()?;
 
