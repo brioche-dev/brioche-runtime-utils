@@ -5,6 +5,7 @@ use eyre::{Context as _, OptionExt as _};
 
 enum Mode {
     AutopackEnabled {
+        output_path: PathBuf,
         resource_dir: PathBuf,
         all_resource_dirs: Vec<PathBuf>,
     },
@@ -48,7 +49,7 @@ fn run() -> eyre::Result<ExitCode> {
 
     let packed_path = ld_resource_dir.join("brioche-packed");
 
-    let mut output_path = PathBuf::from("a.out");
+    let mut output_path = Some(PathBuf::from("a.out"));
     let mut library_search_paths = vec![];
     let mut input_paths = vec![];
 
@@ -59,10 +60,10 @@ fn run() -> eyre::Result<ExitCode> {
 
         if &**arg == b"-o" {
             let output = args.next().ok_or_eyre("invalid arg")?;
-            output_path = PathBuf::from(output);
+            output_path = Some(PathBuf::from(output));
         } else if let Some(output) = arg.strip_prefix(b"-o") {
             let output = output.to_path().map_err(|_| eyre::eyre!("invalid path"))?;
-            output.clone_into(&mut output_path);
+            output_path = Some(output.to_path_buf());
         } else if &**arg == b"-L" {
             let lib_path = args.next().ok_or_eyre("invalid arg")?;
             library_search_paths.push(PathBuf::from(lib_path));
@@ -71,6 +72,9 @@ fn run() -> eyre::Result<ExitCode> {
                 .to_path()
                 .map_err(|_| eyre::eyre!("invalid path"))?;
             library_search_paths.push(lib_path.to_owned());
+        } else if &**arg == b"--help" || &**arg == b"--version" || &**arg == b"-v" {
+            // Skip packing if we're just showing help or version info
+            output_path = None;
         } else if arg.starts_with(b"-") {
             // Ignore other arguments
         } else {
@@ -86,14 +90,16 @@ fn run() -> eyre::Result<ExitCode> {
     // Determine whether we will pack the resulting binary or not. We do this
     // before running the command so we can bail early if the resource dir
     // cannot be found.
-    let autopack_mode = match std::env::var("BRIOCHE_LD_AUTOPACK").as_deref() {
-        Ok("false") => Mode::AutopackDisabled,
-        _ => {
+    let autopack_mode = std::env::var("BRIOCHE_LD_AUTOPACK");
+    let autopack_mode = match (autopack_mode.as_deref(), output_path) {
+        (Ok("false"), _) | (_, None) => Mode::AutopackDisabled,
+        (_, Some(output_path)) => {
             let resource_dir = brioche_resources::find_output_resource_dir(&output_path)
                 .context("error while finding resource dir")?;
             let all_resource_dirs = brioche_resources::find_resource_dirs(&current_exe, true)
                 .context("error while finding resource dir")?;
             Mode::AutopackEnabled {
+                output_path,
                 resource_dir,
                 all_resource_dirs,
             }
@@ -119,6 +125,7 @@ fn run() -> eyre::Result<ExitCode> {
 
     match autopack_mode {
         Mode::AutopackEnabled {
+            output_path,
             resource_dir,
             all_resource_dirs,
         } => {
