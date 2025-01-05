@@ -19,20 +19,27 @@ fn run() -> eyre::Result<()> {
     let current_exe_name = current_exe
         .file_name()
         .ok_or_eyre("failed to get current executable name")?;
-    let sysroot = current_exe
+    let current_exe_dir = current_exe
         .parent()
-        .and_then(|dir| dir.parent())
-        .ok_or_eyre("failed to get sysroot path")?;
+        .ok_or_eyre("failed to get current executable dir")?;
+    let current_exe_parent_dir = current_exe_dir
+        .parent()
+        .ok_or_eyre("failed to get current executable dir")?;
+    let cc_resource_dir = current_exe_parent_dir.join("libexec").join("brioche-cc");
+    if !cc_resource_dir.is_dir() {
+        eyre::bail!(
+            "failed to find c resource dir: {}",
+            cc_resource_dir.display()
+        );
+    }
 
-    let mut original_exe_name = current_exe_name.to_owned();
-    original_exe_name.push("-orig");
-    let original_exe = current_exe.with_file_name(&original_exe_name);
+    let cc = cc_resource_dir.join(current_exe_name);
 
     let mut args = std::env::args_os();
     let arg0 = args.next();
     let args = args.collect::<Vec<_>>();
 
-    let mut command = std::process::Command::new(&original_exe);
+    let mut command = std::process::Command::new(&cc);
     if let Some(arg0) = arg0 {
         command.arg0(&arg0);
     }
@@ -43,7 +50,7 @@ fn run() -> eyre::Result<()> {
     });
 
     if !has_sysroot_arg {
-        command.arg("--sysroot").arg(sysroot);
+        command.arg("--sysroot").arg(current_exe_parent_dir);
     }
 
     command.args(&args);
