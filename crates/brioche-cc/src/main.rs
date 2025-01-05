@@ -34,6 +34,10 @@ fn run() -> eyre::Result<()> {
     }
 
     let cc = cc_resource_dir.join(current_exe_name);
+    let sysroot_path = cc_resource_dir
+        .join("sysroot")
+        .canonicalize()
+        .context("failed to get sysroot path from 'libexec/brioche-cc/sysroot'")?;
 
     let mut args = std::env::args_os();
     let arg0 = args.next();
@@ -50,7 +54,7 @@ fn run() -> eyre::Result<()> {
     });
 
     if !has_sysroot_arg {
-        command.arg("--sysroot").arg(current_exe_parent_dir);
+        command.arg("--sysroot").arg(sysroot_path);
     }
 
     command.args(&args);
