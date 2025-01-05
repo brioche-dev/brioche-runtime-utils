@@ -43,10 +43,7 @@ fn run() -> eyre::Result<ExitCode> {
         );
     }
 
-    let mut original_exe_name = current_exe_name.to_owned();
-    original_exe_name.push("-orig");
-    let original_exe = current_exe.with_file_name(&original_exe_name);
-
+    let linker = ld_resource_dir.join(current_exe_name);
     let packed_path = ld_resource_dir.join("brioche-packed");
 
     let mut output_path = Some(PathBuf::from("a.out"));
@@ -110,7 +107,7 @@ fn run() -> eyre::Result<ExitCode> {
         Ok("true")
     );
 
-    let mut command = std::process::Command::new(&original_exe);
+    let mut command = std::process::Command::new(&linker);
     command.args(std::env::args_os().skip(1));
     let status = command.status()?;
 
