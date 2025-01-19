@@ -1,7 +1,7 @@
 [package]
 name = "runnable-core"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
 
 [dependencies]
 bincode = "2.0.0-rc.3"
@@ -12,3 +12,6 @@ serde = { version = "1.0.203", features = ["derive"] }
 serde_with = { version = "3.8.1", features = ["schemars_0_8"] }
 thiserror = "1.0.61"
 tick-encoding = "0.1.2"
+
+[lints]
+workspace = true

@@ -1,7 +1,10 @@
 [package]
 name = "brioche-cc"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
 
 [dependencies]
 eyre = "0.6.12"
+
+[lints]
+workspace = true

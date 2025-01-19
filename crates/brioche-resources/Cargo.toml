@@ -1,7 +1,7 @@
 [package]
 name = "brioche-resources"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
 
 [dependencies]
 blake3 = "1.5.1"
@@ -12,3 +12,6 @@ thiserror = "1.0.61"
 tick-encoding = "0.1.2"
 ulid = "1.1.2"
 walkdir = "2.5.0"
+
+[lints]
+workspace = true
