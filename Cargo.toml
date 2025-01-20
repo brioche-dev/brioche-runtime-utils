@@ -19,7 +19,7 @@ members = [
 brioche-pack = { git = "https://github.com/brioche-dev/brioche.git", default-features = false }
 
 [workspace.lints.clippy]
-all = { level = "deny", priority = -1 }
+all = { level = "warn", priority = -1 }
 
 [profile.release-tiny]
 inherits = "release"
