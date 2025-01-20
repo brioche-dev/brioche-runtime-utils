@@ -1,3 +1,6 @@
+[workspace.package]
+edition = "2021"
+
 [workspace]
 resolver = "2"
 members = [
@@ -7,12 +10,16 @@ members = [
     "crates/brioche-packed-plain-exec",
     "crates/brioche-packed-userland-exec",
     "crates/brioche-packer",
-    "crates/brioche-resources", "crates/brioche-strip",
+    "crates/brioche-resources",
+    "crates/brioche-strip",
     "crates/runnable-core",
 ]
 
 [workspace.dependencies]
 brioche-pack = { git = "https://github.com/brioche-dev/brioche.git", default-features = false }
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
 
 [profile.release-tiny]
 inherits = "release"
