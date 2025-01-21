@@ -2,6 +2,7 @@
 name = "brioche-cc"
 version = "0.1.0"
 edition.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 eyre = "0.6.12"

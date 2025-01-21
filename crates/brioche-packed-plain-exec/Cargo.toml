@@ -2,6 +2,7 @@
 name = "brioche-packed-plain-exec"
 version = "0.1.1"
 edition.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 brioche-pack = { workspace = true }
