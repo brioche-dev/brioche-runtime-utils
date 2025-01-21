@@ -10,7 +10,7 @@ brioche-pack = { workspace = true }
 brioche-resources = { path = "../brioche-resources" }
 bstr = "1.8.0"
 eyre = "0.6.12"
-thiserror = "1.0.51"
+thiserror = "2.0.11"
 
 [lints]
 workspace = true
