@@ -680,7 +680,7 @@ fn autopack_script(
     let mut arg = Some(arg).filter(|arg| !arg.is_empty());
     let mut command_name = command_path
         .split(['/', '\\'])
-        .last()
+        .next_back()
         .unwrap_or(command_path);
 
     if command_name == "env" {
