@@ -1,9 +1,8 @@
 [workspace.package]
-edition = "2021"
-rust-version = "1.84"
+edition = "2024"
+rust-version = "1.85" # To align with the rust-toolchain.toml
 
 [workspace]
-resolver = "2"
 members = [
     "crates/brioche-autopack",
     "crates/brioche-cc",

@@ -37,7 +37,7 @@ impl<T> serde_with::schemars_0_8::JsonSchemaAs<T> for TickEncoded {
         "TickEncoded".to_string()
     }
 
-    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
-        <String as schemars::JsonSchema>::json_schema(gen)
+    fn json_schema(generator: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+        <String as schemars::JsonSchema>::json_schema(generator)
     }
 }
