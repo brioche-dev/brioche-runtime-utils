@@ -18,19 +18,19 @@ enum StripArg {
 impl StripArg {
     fn into_args(self) -> eyre::Result<Vec<std::ffi::OsString>> {
         match self {
-            StripArg::Arg(arg) => Ok(vec![arg]),
-            StripArg::DashOPath(path) => {
+            Self::Arg(arg) => Ok(vec![arg]),
+            Self::DashOPath(path) => {
                 let path_bytes = <[u8]>::from_path(&path).ok_or_eyre("invalid path")?;
 
                 let mut arg = b"-o".to_vec();
                 arg.extend_from_slice(path_bytes);
                 Ok(vec![arg.to_os_str()?.to_owned()])
             }
-            StripArg::DashOFollowedByPath(path) => Ok(vec![
+            Self::DashOFollowedByPath(path) => Ok(vec![
                 std::ffi::OsString::from("-o"),
                 std::ffi::OsString::from(path),
             ]),
-            StripArg::InputPath(path) => Ok(vec![std::ffi::OsString::from(path)]),
+            Self::InputPath(path) => Ok(vec![std::ffi::OsString::from(path)]),
         }
     }
 }
@@ -67,7 +67,7 @@ fn run() -> eyre::Result<ExitCode> {
 
     // If autopacking is disabled, call the original `strip` binary and
     // bail early
-    if let Ok("false") = std::env::var("BRIOCHE_STRIP_AUTOPACK").as_deref() {
+    if std::env::var("BRIOCHE_STRIP_AUTOPACK").as_deref() == Ok("false") {
         let mut command = std::process::Command::new(strip);
         command.args(std::env::args_os().skip(1));
         let status = command.status()?;

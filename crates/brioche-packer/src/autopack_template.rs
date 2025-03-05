@@ -294,7 +294,7 @@ impl ScriptConfigTemplate {
 pub struct RepackConfigTemplate {}
 
 impl RepackConfigTemplate {
-    fn build(self) -> brioche_autopack::RepackConfig {
+    const fn build(self) -> brioche_autopack::RepackConfig {
         let Self {} = self;
         brioche_autopack::RepackConfig {}
     }
