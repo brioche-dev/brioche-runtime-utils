@@ -14,6 +14,7 @@ members = [
     "crates/brioche-strip",
     "crates/runnable-core",
 ]
+resolver = "3"
 
 [workspace.dependencies]
 brioche-pack = { git = "https://github.com/brioche-dev/brioche.git", default-features = false }
