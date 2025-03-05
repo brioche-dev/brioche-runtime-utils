@@ -53,7 +53,7 @@ impl AutopackConfigTemplate {
     pub fn build(
         self,
         ctx: &AutopackConfigTemplateContext,
-        recipe_path: PathBuf,
+        recipe_path: &Path,
     ) -> eyre::Result<brioche_autopack::AutopackConfig> {
         let Self {
             paths,
@@ -77,16 +77,16 @@ impl AutopackConfigTemplate {
             .map(|path| path.build(ctx))
             .collect::<eyre::Result<Vec<_>>>()?;
         let dynamic_binary = dynamic_binary
-            .map(|opts| opts.build(ctx, &recipe_path))
+            .map(|opts| opts.build(ctx, recipe_path))
             .transpose()?;
         let shared_library = shared_library.map(|opts| opts.build(ctx)).transpose()?;
         let script = script
-            .map(|opts| opts.build(ctx, &recipe_path))
+            .map(|opts| opts.build(ctx, recipe_path))
             .transpose()?;
-        let repack = repack.map(|opts| opts.build());
+        let repack = repack.map(RepackConfigTemplate::build);
 
         if self_dependency {
-            link_dependencies.insert(0, recipe_path.clone());
+            link_dependencies.insert(0, recipe_path.to_path_buf());
         }
 
         let inputs = if globs.is_empty() {
@@ -104,7 +104,7 @@ impl AutopackConfigTemplate {
             brioche_autopack::AutopackInputs::Globs {
                 patterns: globs,
                 exclude_patterns: exclude_globs,
-                base_path: recipe_path.clone(),
+                base_path: recipe_path.to_path_buf(),
             }
         };
 

@@ -18,7 +18,7 @@ fn main() -> ExitCode {
     match result {
         Ok(exit_code) => exit_code,
         Err(err) => {
-            eprintln!("{:#}", err);
+            eprintln!("{err:#}");
             ExitCode::FAILURE
         }
     }
@@ -115,8 +115,7 @@ fn run() -> eyre::Result<ExitCode> {
         let exit_code = status
             .code()
             .and_then(|code| u8::try_from(code).ok())
-            .map(ExitCode::from)
-            .unwrap_or(ExitCode::FAILURE);
+            .map_or(ExitCode::FAILURE, ExitCode::from);
         return Ok(exit_code);
     }
 
