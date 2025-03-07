@@ -6,7 +6,7 @@ use bstr::ByteSlice as _;
 
 const BRIOCHE_PACKED_ERROR: u8 = 121;
 
-extern "C" {
+unsafe extern "C" {
     static environ: *const *const libc::c_char;
 }
 
