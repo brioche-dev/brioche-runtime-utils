@@ -40,10 +40,10 @@ pub fn find_resource_dirs(
         }
     }
 
-    if !paths.is_empty() {
-        Ok(paths)
-    } else {
+    if paths.is_empty() {
         Err(PackResourceDirError::NotFound)
+    } else {
+        Ok(paths)
     }
 }
 
@@ -56,6 +56,7 @@ pub fn find_output_resource_dir(program: &Path) -> Result<PathBuf, PackResourceD
     Ok(resource_dir)
 }
 
+#[must_use]
 pub fn find_in_resource_dirs(resource_dirs: &[PathBuf], subpath: &Path) -> Option<PathBuf> {
     for resource_dir in resource_dirs {
         let path = resource_dir.join(subpath);

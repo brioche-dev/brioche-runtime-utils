@@ -18,19 +18,19 @@ enum StripArg {
 impl StripArg {
     fn into_args(self) -> eyre::Result<Vec<std::ffi::OsString>> {
         match self {
-            StripArg::Arg(arg) => Ok(vec![arg]),
-            StripArg::DashOPath(path) => {
+            Self::Arg(arg) => Ok(vec![arg]),
+            Self::DashOPath(path) => {
                 let path_bytes = <[u8]>::from_path(&path).ok_or_eyre("invalid path")?;
 
                 let mut arg = b"-o".to_vec();
                 arg.extend_from_slice(path_bytes);
                 Ok(vec![arg.to_os_str()?.to_owned()])
             }
-            StripArg::DashOFollowedByPath(path) => Ok(vec![
+            Self::DashOFollowedByPath(path) => Ok(vec![
                 std::ffi::OsString::from("-o"),
                 std::ffi::OsString::from(path),
             ]),
-            StripArg::InputPath(path) => Ok(vec![std::ffi::OsString::from(path)]),
+            Self::InputPath(path) => Ok(vec![std::ffi::OsString::from(path)]),
         }
     }
 }
@@ -41,7 +41,7 @@ fn main() -> ExitCode {
     match result {
         Ok(exit_code) => exit_code,
         Err(err) => {
-            eprintln!("{:#}", err);
+            eprintln!("{err:#}");
             ExitCode::FAILURE
         }
     }
@@ -67,7 +67,7 @@ fn run() -> eyre::Result<ExitCode> {
 
     // If autopacking is disabled, call the original `strip` binary and
     // bail early
-    if let Ok("false") = std::env::var("BRIOCHE_STRIP_AUTOPACK").as_deref() {
+    if std::env::var("BRIOCHE_STRIP_AUTOPACK").as_deref() == Ok("false") {
         let mut command = std::process::Command::new(strip);
         command.args(std::env::args_os().skip(1));
         let status = command.status()?;
@@ -75,8 +75,7 @@ fn run() -> eyre::Result<ExitCode> {
         let exit_code = status
             .code()
             .and_then(|code| u8::try_from(code).ok())
-            .map(ExitCode::from)
-            .unwrap_or(ExitCode::FAILURE);
+            .map_or(ExitCode::FAILURE, ExitCode::from);
         return Ok(exit_code);
     }
 
@@ -112,13 +111,13 @@ fn run() -> eyre::Result<ExitCode> {
                 // Parse the next argument as the output path
                 let output = args.next().ok_or_eyre("expected path after -o")?;
                 let output = std::path::PathBuf::from(output);
-                strip_args.push(StripArg::DashOFollowedByPath(output))
+                strip_args.push(StripArg::DashOFollowedByPath(output));
             }
             _ => {
                 if let Some(output) = arg_bytes.strip_prefix(b"-o") {
                     // Support "-o<path>" syntax
                     let output = output.to_path().map_err(|_| eyre::eyre!("invalid path"))?;
-                    strip_args.push(StripArg::DashOPath(output.to_path_buf()))
+                    strip_args.push(StripArg::DashOPath(output.to_path_buf()));
                 } else if arg_bytes.starts_with(b"-") {
                     // Pass through any extra argument starting with a "-"
                     strip_args.push(StripArg::Arg(arg));
@@ -144,7 +143,7 @@ fn run() -> eyre::Result<ExitCode> {
     // Convert the remapped args back into an argument list
     let strip_args = strip_args
         .into_iter()
-        .map(|arg| arg.into_args())
+        .map(StripArg::into_args)
         .collect::<eyre::Result<Vec<_>>>()?;
 
     // Call the original strip process
@@ -156,8 +155,7 @@ fn run() -> eyre::Result<ExitCode> {
         let exit_code = status
             .code()
             .and_then(|code| u8::try_from(code).ok())
-            .map(ExitCode::from)
-            .unwrap_or(ExitCode::FAILURE);
+            .map_or(ExitCode::FAILURE, ExitCode::from);
         return Ok(exit_code);
     }
 
@@ -505,6 +503,7 @@ fn finish_remapped_file(remapped_file: RemapFile) -> eyre::Result<()> {
     Ok(())
 }
 
+#[must_use]
 pub fn is_executable(permissions: &std::fs::Permissions) -> bool {
     use std::os::unix::fs::PermissionsExt as _;
 

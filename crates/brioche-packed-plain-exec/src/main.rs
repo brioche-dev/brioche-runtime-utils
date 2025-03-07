@@ -4,6 +4,7 @@ use bstr::ByteSlice as _;
 
 const BRIOCHE_PACKED_ERROR: u8 = 121;
 
+#[must_use]
 pub fn main() -> ExitCode {
     let result = run();
     match result {

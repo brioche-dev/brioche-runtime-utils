@@ -8,7 +8,7 @@ fn main() -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
-            eprintln!("brioche-cc error: {:#}", err);
+            eprintln!("brioche-cc error: {err:#}");
             ExitCode::FAILURE
         }
     }

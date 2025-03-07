@@ -128,7 +128,7 @@ fn run() -> eyre::Result<()> {
             }
         }
         Args::UpdateSource(args) => {
-            run_update_source(args)?;
+            run_update_source(&args)?;
         }
     }
 
@@ -194,7 +194,7 @@ fn run_autopack(args: AutopackArgs) -> eyre::Result<()> {
         variables,
         resource_dir,
     };
-    let config = config_template.build(ctx, recipe_path)?;
+    let config = config_template.build(ctx, &recipe_path)?;
 
     brioche_autopack::autopack(&config)?;
 
@@ -210,7 +210,7 @@ struct UpdateSourceArgs {
     name: Option<String>,
 }
 
-fn run_update_source(args: UpdateSourceArgs) -> eyre::Result<()> {
+fn run_update_source(args: &UpdateSourceArgs) -> eyre::Result<()> {
     let program = std::fs::File::open(&args.program)?;
     let extracted = brioche_pack::extract_pack(program)?;
     let output_resource_dir = brioche_resources::find_output_resource_dir(&args.program)?;
@@ -231,8 +231,7 @@ fn run_update_source(args: UpdateSourceArgs) -> eyre::Result<()> {
             let new_name = args
                 .name
                 .as_deref()
-                .map(Path::new)
-                .unwrap_or_else(|| Path::new(program_name));
+                .map_or_else(|| Path::new(program_name), Path::new);
 
             let new_source = std::fs::File::open(&args.new_source).map_err(|_| {
                 eyre::eyre!("could not open new source {}", args.new_source.display())
@@ -293,6 +292,7 @@ fn run_update_source(args: UpdateSourceArgs) -> eyre::Result<()> {
     Ok(())
 }
 
+#[must_use]
 pub fn is_executable(permissions: &std::fs::Permissions) -> bool {
     use std::os::unix::fs::PermissionsExt as _;
 

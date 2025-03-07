@@ -143,8 +143,9 @@ impl ScriptConfig {
     ) -> impl Iterator<Item = eyre::Result<(String, runnable_core::EnvValue)>> + 'a {
         self.env.iter().map(|(key, env_value)| {
             let env_value = match env_value {
-                runnable_core::EnvValue::Clear => env_value.clone(),
-                runnable_core::EnvValue::Inherit => env_value.clone(),
+                runnable_core::EnvValue::Clear | runnable_core::EnvValue::Inherit => {
+                    env_value.clone()
+                }
                 runnable_core::EnvValue::Set { value } => {
                     let value = relative_template(value, self.base_path.as_deref(), output_path)?;
                     runnable_core::EnvValue::Set { value }
@@ -314,9 +315,8 @@ fn autopack_context(config: &AutopackConfig) -> eyre::Result<AutopackContext> {
                 continue;
             }
             Err(error) => {
-                return Err(error).with_context(|| {
-                    format!("failed to read directory {:?}", library_path_env_dir)
-                });
+                return Err(error)
+                    .with_context(|| format!("failed to read directory {library_path_env_dir:?}"));
             }
         };
         for entry in library_path_env_dir_entries {
@@ -345,7 +345,7 @@ fn autopack_context(config: &AutopackConfig) -> eyre::Result<AutopackContext> {
             }
             Err(error) => {
                 return Err(error)
-                    .with_context(|| format!("failed to read directory {:?}", path_env_dir));
+                    .with_context(|| format!("failed to read directory {path_env_dir:?}"));
             }
         };
         for entry in path_env_dir_entries {
@@ -524,7 +524,7 @@ fn autopack_dynamic_binary(
                 .iter()
                 .map(|lib| &**lib),
         )
-        .map(|lib| lib.to_string())
+        .map(std::string::ToString::to_string)
         .collect();
 
     let library_dir_resource_paths = collect_all_library_dirs(
@@ -612,7 +612,7 @@ fn autopack_shared_library(
                 .iter()
                 .map(|lib| &**lib),
         )
-        .map(|lib| lib.to_string())
+        .map(std::string::ToString::to_string)
         .collect();
 
     let library_dir_resource_paths = collect_all_library_dirs(
@@ -707,15 +707,14 @@ fn autopack_script(
         .env
         .values()
         .filter_map(|value| match value {
-            runnable_core::EnvValue::Clear => None,
-            runnable_core::EnvValue::Inherit => None,
-            runnable_core::EnvValue::Set { value } => Some(value),
-            runnable_core::EnvValue::Fallback { value } => Some(value),
-            runnable_core::EnvValue::Prepend {
+            runnable_core::EnvValue::Clear | runnable_core::EnvValue::Inherit => None,
+            runnable_core::EnvValue::Set { value }
+            | runnable_core::EnvValue::Fallback { value }
+            | runnable_core::EnvValue::Prepend {
                 value,
                 separator: _,
-            } => Some(value),
-            runnable_core::EnvValue::Append {
+            }
+            | runnable_core::EnvValue::Append {
                 value,
                 separator: _,
             } => Some(value),
@@ -734,7 +733,11 @@ fn autopack_script(
 
     let resource_paths = [command_resource.clone(), script_resource.clone()]
         .into_iter()
-        .chain(env_resource_paths.into_iter().map(|path| path.to_owned()))
+        .chain(
+            env_resource_paths
+                .into_iter()
+                .map(std::borrow::ToOwned::to_owned),
+        )
         .map(|path| {
             Vec::<u8>::from_path_buf(path).map_err(|_| eyre::eyre!("invalid resource path"))
         })
@@ -860,9 +863,9 @@ fn collect_all_library_dirs(
         let Some(library_path) = library_path else {
             if dynamic_linking_config.skip_unknown_libraries {
                 continue;
-            } else {
-                eyre::bail!("library not found: {library_name:?}");
             }
+
+            eyre::bail!("library not found: {library_name:?}");
         };
 
         // Autopack the library if it's pending
@@ -907,21 +910,18 @@ fn collect_all_library_dirs(
         };
 
         // TODO: Support other object files
-        let library_elf = match library_object {
-            goblin::Object::Elf(elf) => elf,
-            _ => {
-                continue;
-            }
+        let goblin::Object::Elf(library_elf) = library_object else {
+            continue;
         };
-        needed_libraries.extend(library_elf.libraries.iter().map(|lib| lib.to_string()));
+        needed_libraries.extend(library_elf.libraries.iter().map(|lib| (*lib).to_string()));
 
         // If the library has a Brioche pack, then use the included resources
         // for additional search directories
         let library_file_cursor = std::io::Cursor::new(&library_file[..]);
         if let Ok(extracted_library) = brioche_pack::extract_pack(library_file_cursor) {
             let library_dirs = match &extracted_library.pack {
-                brioche_pack::Pack::LdLinux { library_dirs, .. } => &library_dirs[..],
-                brioche_pack::Pack::Static { library_dirs } => &library_dirs[..],
+                brioche_pack::Pack::Static { library_dirs }
+                | brioche_pack::Pack::LdLinux { library_dirs, .. } => &library_dirs[..],
                 brioche_pack::Pack::Metadata { .. } => &[],
             };
 
@@ -1001,14 +1001,13 @@ fn add_named_blob_from(
 ) -> eyre::Result<PathBuf> {
     use std::os::unix::prelude::PermissionsExt as _;
 
-    let alias_name = match alias_name {
-        Some(alias_name) => alias_name,
-        None => {
-            let filename = path
-                .file_name()
-                .ok_or_eyre("failed to get filename from path")?;
-            Path::new(filename)
-        }
+    let alias_name = if let Some(alias_name) = alias_name {
+        alias_name
+    } else {
+        let filename = path
+            .file_name()
+            .ok_or_eyre("failed to get filename from path")?;
+        Path::new(filename)
     };
 
     let mut file = std::fs::File::open(path)?;

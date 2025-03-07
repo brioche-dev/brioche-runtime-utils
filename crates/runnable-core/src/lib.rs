@@ -105,6 +105,7 @@ pub struct Template {
 }
 
 impl Template {
+    #[must_use]
     pub fn from_literal(value: Vec<u8>) -> Self {
         if value.is_empty() {
             Self::default()
