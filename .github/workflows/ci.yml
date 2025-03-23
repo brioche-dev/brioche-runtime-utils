@@ -100,6 +100,7 @@ jobs:
             -Z 'build-std-features=panic_immediate_abort'
         env:
           TOOLS_TARGET: ${{ matrix.platform.tools_target }}
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-gnu-gcc
       - name: Prepare artifact
         run: |
           mkdir -p "artifacts/brioche/$PLATFORM/"
