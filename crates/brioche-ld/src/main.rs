@@ -1,7 +1,17 @@
-use std::{collections::HashSet, path::PathBuf, process::ExitCode};
+use std::{
+    collections::{HashSet, VecDeque},
+    io::Read,
+    path::PathBuf,
+    process::ExitCode,
+};
 
-use bstr::ByteSlice as _;
+use bstr::{ByteSlice as _, ByteVec as _};
+use chumsky::prelude::*;
 use eyre::{Context as _, OptionExt as _};
+
+/// The maximum number of times we allow reading `@file` arguments. This is
+/// a simple measure we use to avoid reading cyclic `@file` references forever.
+const MAX_FILE_DEREFERENCES: u32 = 5000;
 
 enum Mode {
     AutopackEnabled {
@@ -50,19 +60,21 @@ fn run() -> eyre::Result<ExitCode> {
     let mut library_search_paths = vec![];
     let mut input_paths = vec![];
 
-    let mut args = std::env::args_os().skip(1);
-    while let Some(arg) = args.next() {
+    let mut file_dereferences = 0;
+
+    let mut args: VecDeque<_> = std::env::args_os().skip(1).collect();
+    while let Some(arg) = args.pop_front() {
         let arg = <[u8]>::from_os_str(&arg).ok_or_eyre("invalid arg")?;
         let arg = bstr::BStr::new(arg);
 
         if &**arg == b"-o" {
-            let output = args.next().ok_or_eyre("invalid arg")?;
+            let output = args.pop_front().ok_or_eyre("invalid arg")?;
             output_path = Some(PathBuf::from(output));
         } else if let Some(output) = arg.strip_prefix(b"-o") {
             let output = output.to_path().map_err(|_| eyre::eyre!("invalid path"))?;
             output_path = Some(output.to_path_buf());
         } else if &**arg == b"-L" {
-            let lib_path = args.next().ok_or_eyre("invalid arg")?;
+            let lib_path = args.pop_front().ok_or_eyre("invalid arg")?;
             library_search_paths.push(PathBuf::from(lib_path));
         } else if let Some(lib_path) = arg.strip_prefix(b"-L") {
             let lib_path = lib_path
@@ -74,6 +86,40 @@ fn run() -> eyre::Result<ExitCode> {
             output_path = None;
         } else if arg.starts_with(b"-") {
             // Ignore other arguments
+        } else if let Some(arg_file_path) = arg.strip_prefix(b"@") {
+            let arg_file_path = arg_file_path
+                .to_path()
+                .map_err(|_| eyre::eyre!("invalid path"))?;
+
+            // `@file` arg. Arguments are parsed and read from `file`
+            file_dereferences += 1;
+            if file_dereferences > MAX_FILE_DEREFERENCES {
+                eyre::bail!("encountered more than {MAX_FILE_DEREFERENCES} '@file' arguments");
+            }
+
+            let mut file_contents = Vec::<u8>::new();
+            let mut file = std::fs::File::open(arg_file_path).wrap_err_with(|| {
+                format!("failed to read args from path {}", arg_file_path.display())
+            })?;
+            file.read_to_end(&mut file_contents)?;
+            drop(file);
+
+            // Parse the arguments from the file
+            let args_from_file = file_args_parser()
+                .parse(&file_contents[..])
+                .map_err(|error| {
+                    eyre::eyre!(
+                        "failed to parse args from path {}: {error:#?}",
+                        arg_file_path.display()
+                    )
+                })?;
+
+            // Add each parsed arg to the start of `args`, so they will get
+            // processed in place of the `@file` arg
+            for new_arg in args_from_file.into_iter().rev() {
+                let new_arg = Vec::from(new_arg).into_os_string()?;
+                args.push_front(new_arg);
+            }
         } else {
             let input_path = arg.to_path().map_err(|_| eyre::eyre!("invalid path"))?;
             input_paths.push(input_path.to_owned());
@@ -156,4 +202,60 @@ fn run() -> eyre::Result<ExitCode> {
     };
 
     Ok(ExitCode::SUCCESS)
+}
+
+fn file_args_parser() -> impl Parser<u8, Vec<bstr::BString>, Error = Simple<u8>> {
+    let escape = just(b'\\').ignore_then(any());
+    let bare_arg = none_of(b"\\\"' \t\r\n\x0C")
+        .or(escape)
+        .repeated()
+        .at_least(1);
+    let double_quoted_arg = none_of(b"\\\"")
+        .or(escape)
+        .repeated()
+        .delimited_by(just(b'"'), just(b'"'));
+    let single_quoted_arg = none_of(b"\\'")
+        .or(escape)
+        .repeated()
+        .delimited_by(just(b'\''), just(b'\''));
+    let arg = bare_arg
+        .or(double_quoted_arg)
+        .or(single_quoted_arg)
+        .padded()
+        .map(bstr::BString::new);
+    arg.repeated().then_ignore(end())
+}
+
+#[cfg(test)]
+mod tests {
+    use chumsky::Parser as _;
+
+    use crate::file_args_parser;
+
+    const EMPTY_OUTPUT: Vec<Vec<u8>> = vec![];
+
+    #[test]
+    fn test_file_args_parser() {
+        let parser = file_args_parser();
+        assert_eq!(parser.parse(b"").unwrap(), EMPTY_OUTPUT);
+        assert_eq!(parser.parse(b"foo").unwrap(), ["foo"]);
+        assert_eq!(parser.parse(b"foo bar baz").unwrap(), ["foo", "bar", "baz"]);
+        assert_eq!(parser.parse(b"foo bar baz").unwrap(), ["foo", "bar", "baz"]);
+        assert_eq!(parser.parse(b"\"\"").unwrap(), [b""]);
+        assert_eq!(parser.parse(b"''").unwrap(), [b""]);
+        assert_eq!(
+            parser
+                .parse(b"a \"bcd'ef'\\\\\\\"gh\" \r\n 'ijk\\'' \"lmn \t opq\\\"\"")
+                .unwrap(),
+            ["a", "bcd'ef'\\\"gh", "ijk'", "lmn \t opq\""],
+        );
+        assert_eq!(
+            parser.parse(b"a \x00\xFF b").unwrap(),
+            [&b"a"[..], &b"\x00\xFF"[..], &b"b"[..]],
+        );
+
+        assert!(parser.parse(b"\\").is_err());
+        assert!(parser.parse(b"\"").is_err());
+        assert!(parser.parse(b"'").is_err());
+    }
 }
