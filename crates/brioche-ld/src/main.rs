@@ -199,7 +199,7 @@ fn run() -> eyre::Result<ExitCode> {
         Mode::AutopackDisabled => {
             // We already wrote the binary, so nothing to do
         }
-    };
+    }
 
     Ok(ExitCode::SUCCESS)
 }
