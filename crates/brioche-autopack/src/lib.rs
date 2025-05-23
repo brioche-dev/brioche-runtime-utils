@@ -315,8 +315,12 @@ fn autopack_context(config: &AutopackConfig) -> eyre::Result<AutopackContext> {
                 continue;
             }
             Err(error) => {
-                return Err(error)
-                    .with_context(|| format!("failed to read directory {library_path_env_dir:?}"));
+                return Err(error).with_context(|| {
+                    format!(
+                        "failed to read directory {}",
+                        library_path_env_dir.display()
+                    )
+                });
             }
         };
         for entry in library_path_env_dir_entries {
@@ -327,10 +331,9 @@ fn autopack_context(config: &AutopackConfig) -> eyre::Result<AutopackContext> {
                 entry.path()
             );
 
-            let entry_path = entry
-                .path()
-                .canonicalize()
-                .with_context(|| format!("failed to canonicalize path {:?}", entry.path()))?;
+            let entry_path = entry.path().canonicalize().with_context(|| {
+                format!("failed to canonicalize path {}", entry.path().display())
+            })?;
             link_dependency_library_paths.push(entry_path);
         }
     }
@@ -344,8 +347,9 @@ fn autopack_context(config: &AutopackConfig) -> eyre::Result<AutopackContext> {
                 continue;
             }
             Err(error) => {
-                return Err(error)
-                    .with_context(|| format!("failed to read directory {path_env_dir:?}"));
+                return Err(error).with_context(|| {
+                    format!("failed to read directory {}", path_env_dir.display())
+                });
             }
         };
         for entry in path_env_dir_entries {
@@ -356,10 +360,9 @@ fn autopack_context(config: &AutopackConfig) -> eyre::Result<AutopackContext> {
                 entry.path()
             );
 
-            let entry_path = entry
-                .path()
-                .canonicalize()
-                .with_context(|| format!("failed to canonicalize path {:?}", entry.path()))?;
+            let entry_path = entry.path().canonicalize().with_context(|| {
+                format!("failed to canonicalize path {}", entry.path().display())
+            })?;
             link_dependency_paths.push(entry_path);
         }
     }
@@ -509,9 +512,18 @@ fn autopack_dynamic_binary(
     try_autopack_dependency(ctx, &interpreter_path, pending_paths)?;
 
     let interpreter_resource_path = add_named_blob_from(ctx, &interpreter_path, None)
-        .with_context(|| format!("failed to add resource for interpreter {interpreter_path:?}"))?;
-    let program_resource_path = add_named_blob_from(ctx, source_path, None)
-        .with_context(|| format!("failed to add resource for program {source_path:?}"))?;
+        .with_context(|| {
+            format!(
+                "failed to add resource for interpreter {}",
+                interpreter_path.display()
+            )
+        })?;
+    let program_resource_path = add_named_blob_from(ctx, source_path, None).with_context(|| {
+        format!(
+            "failed to add resource for program {}",
+            source_path.display()
+        )
+    })?;
 
     let needed_libraries: VecDeque<_> = program_object
         .libraries
@@ -563,14 +575,22 @@ fn autopack_dynamic_binary(
     };
 
     let packed_exec_path = &dynamic_binary_config.packed_executable;
-    let mut packed_exec = std::fs::File::open(packed_exec_path)
-        .with_context(|| format!("failed to open packed executable {packed_exec_path:?}"))?;
+    let mut packed_exec = std::fs::File::open(packed_exec_path).with_context(|| {
+        format!(
+            "failed to open packed executable {}",
+            packed_exec_path.display()
+        )
+    })?;
     let mut output = std::fs::File::create(output_path)
-        .with_context(|| format!("failed to create file {output_path:?}"))?;
-    std::io::copy(&mut packed_exec, &mut output)
-        .with_context(|| format!("failed to copy packed executable to {output_path:?}"))?;
+        .with_context(|| format!("failed to create file {}", output_path.display()))?;
+    std::io::copy(&mut packed_exec, &mut output).with_context(|| {
+        format!(
+            "failed to copy packed executable to {}",
+            output_path.display()
+        )
+    })?;
     brioche_pack::inject_pack(output, &pack)
-        .with_context(|| format!("failed to inject pack into {output_path:?}"))?;
+        .with_context(|| format!("failed to inject pack into {}", output_path.display()))?;
 
     Ok(true)
 }
@@ -776,15 +796,23 @@ fn autopack_script(
     };
 
     let packed_exec_path = &script_config.packed_executable;
-    let mut packed_exec = std::fs::File::open(packed_exec_path)
-        .with_context(|| format!("failed to open packed executable {packed_exec_path:?}"))?;
+    let mut packed_exec = std::fs::File::open(packed_exec_path).with_context(|| {
+        format!(
+            "failed to open packed executable {}",
+            packed_exec_path.display()
+        )
+    })?;
 
     let mut output = std::fs::File::create(output_path)
-        .with_context(|| format!("failed to create file {output_path:?}"))?;
-    std::io::copy(&mut packed_exec, &mut output)
-        .with_context(|| format!("failed to copy packed executable to {output_path:?}"))?;
+        .with_context(|| format!("failed to create file {}", output_path.display()))?;
+    std::io::copy(&mut packed_exec, &mut output).with_context(|| {
+        format!(
+            "failed to copy packed executable to {}",
+            output_path.display()
+        )
+    })?;
     brioche_pack::inject_pack(output, &pack)
-        .with_context(|| format!("failed to inject pack into {output_path:?}"))?;
+        .with_context(|| format!("failed to inject pack into {}", output_path.display()))?;
 
     Ok(true)
 }
@@ -884,7 +912,12 @@ fn collect_all_library_dirs(
             let library_alias = Path::new(&library_name);
             let library_resource_path =
                 add_named_blob_from(ctx, &library_path, Some(library_alias)).with_context(
-                    || format!("failed to add resource for library {library_path:?}"),
+                    || {
+                        format!(
+                            "failed to add resource for library {}",
+                            library_path.display()
+                        )
+                    },
                 )?;
 
             // Add the parent dir to the list of library directories. Note
@@ -1037,7 +1070,7 @@ fn try_autopack_dependency(
     // Get the canonical path of the dependency
     let canonical_path = path
         .canonicalize()
-        .with_context(|| format!("failed to canonicalize path {path:?}"))?;
+        .with_context(|| format!("failed to canonicalize path {}", path.display()))?;
 
     // If the path is pending, then autopack it
     if let Some(path_config) = pending_paths.remove(&canonical_path) {
