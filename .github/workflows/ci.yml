@@ -20,6 +20,7 @@ jobs:
         run: cargo fmt -- --check
       - name: Check Clippy
         run: cargo clippy --all -- -Dwarnings
+
   test:
     name: Run tests
     strategy:
@@ -37,6 +38,7 @@ jobs:
       # more disk space, so much so that it can cause the run to fail
       - name: Run tests
         run: cargo test --all --release
+
   build:
     name: Build artifacts [${{ matrix.platform.name }}]
     strategy:
@@ -134,10 +136,18 @@ jobs:
           name: brioche-runtime-utils-${{ matrix.platform.name }}
           if-no-files-found: error
           path: artifacts/brioche
+
+  all-checks-passed:
+    name: All checks passed
+    needs: [check, test, build]
+    runs-on: ubuntu-22.04
+    steps:
+      - run: ":"
+
   push:
     name: Push artifacts
     if: github.repository == 'brioche-dev/brioche-runtime-utils'
-    needs: [check, test, build]
+    needs: [all-checks-passed]
     runs-on: ubuntu-22.04
     steps:
       - name: Download artifacts (x86_64-linux)
