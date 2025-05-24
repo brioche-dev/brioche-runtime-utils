@@ -39,8 +39,16 @@ jobs:
       - name: Run tests
         run: cargo test --all --release
 
+  all-checks-passed:
+    name: All checks passed
+    needs: [check, test]
+    runs-on: ubuntu-24.04
+    steps:
+      - run: ":"
+
   build:
     name: Build artifacts [${{ matrix.platform.name }}]
+    if: github.event_name == 'push'
     strategy:
       matrix:
         platform:
@@ -137,17 +145,10 @@ jobs:
           if-no-files-found: error
           path: artifacts/brioche
 
-  all-checks-passed:
-    name: All checks passed
-    needs: [check, test, build]
-    runs-on: ubuntu-24.04
-    steps:
-      - run: ":"
-
   push:
     name: Push artifacts
-    if: github.repository == 'brioche-dev/brioche-runtime-utils'
-    needs: [all-checks-passed]
+    if: github.event_name == 'push' && github.repository == 'brioche-dev/brioche-runtime-utils'
+    needs: [all-checks-passed, build]
     runs-on: ubuntu-24.04
     steps:
       - name: Download artifacts (x86_64-linux)
