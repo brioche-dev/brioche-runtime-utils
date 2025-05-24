@@ -12,7 +12,7 @@ env:
 jobs:
   check:
     name: Run checks
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -26,9 +26,8 @@ jobs:
     strategy:
       matrix:
         runs_on:
-          - ubuntu-22.04
-          - ubuntu-22.04-arm
           - ubuntu-24.04
+          - ubuntu-24.04-arm
           - macos-14
     runs-on: ${{ matrix.runs_on }}
     steps:
@@ -45,12 +44,12 @@ jobs:
       matrix:
         platform:
           - name: x86_64-linux
-            runs_on: ubuntu-22.04
+            runs_on: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             tools_target: x86_64-unknown-linux-musl
             packed_exec: brioche-packed-userland-exec
           - name: aarch64-linux
-            runs_on: ubuntu-22.04-arm
+            runs_on: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             tools_target: aarch64-unknown-linux-musl
             packed_exec: brioche-packed-userland-exec
@@ -140,7 +139,7 @@ jobs:
   all-checks-passed:
     name: All checks passed
     needs: [check, test, build]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - run: ":"
 
@@ -148,7 +147,7 @@ jobs:
     name: Push artifacts
     if: github.repository == 'brioche-dev/brioche-runtime-utils'
     needs: [all-checks-passed]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Download artifacts (x86_64-linux)
         uses: actions/download-artifact@v4
@@ -218,4 +217,3 @@ jobs:
           AWS_REQUEST_CHECKSUM_CALCULATION: WHEN_REQUIRED
           AWS_RESPONSE_CHECKSUM_CALCULATION: WHEN_REQUIRED
           S3_ENDPOINT: ${{ secrets.R2_S3_ENDPOINT }}
-
