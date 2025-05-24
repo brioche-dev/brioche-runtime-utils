@@ -40,15 +40,15 @@ fn run() -> eyre::Result<()> {
         .context("failed to get sysroot path from 'libexec/brioche-cc/sysroot'")?;
 
     let mut args = std::env::args_os();
-    let arg0 = args.next();
-    let args = args.collect::<Vec<_>>();
+    let first_arg = args.next();
+    let next_args = args.collect::<Vec<_>>();
 
     let mut command = std::process::Command::new(&cc);
-    if let Some(arg0) = arg0 {
+    if let Some(arg0) = first_arg {
         command.arg0(&arg0);
     }
 
-    let has_sysroot_arg = args.iter().any(|arg| {
+    let has_sysroot_arg = next_args.iter().any(|arg| {
         let arg_string = arg.to_string_lossy();
         arg_string == "--sysroot" || arg_string.starts_with("--sysroot=")
     });
@@ -57,7 +57,7 @@ fn run() -> eyre::Result<()> {
         command.arg("--sysroot").arg(sysroot_path);
     }
 
-    command.args(&args);
+    command.args(&next_args);
 
     let error = command.exec();
     panic!("brioche-cc exec error: {error:#}");
