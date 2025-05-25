@@ -2,6 +2,7 @@ name: CI
 
 on:
   - push
+  - pull_request
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -12,7 +13,7 @@ env:
 jobs:
   check:
     name: Run checks
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -26,10 +27,9 @@ jobs:
     strategy:
       matrix:
         runs_on:
-          - ubuntu-22.04
-          - ubuntu-22.04-arm
           - ubuntu-24.04
-          - macos-14
+          - ubuntu-24.04-arm
+          - macos-15
     runs-on: ${{ matrix.runs_on }}
     steps:
       - name: Checkout code
@@ -39,28 +39,36 @@ jobs:
       - name: Run tests
         run: cargo test --all --release
 
+  all-checks-passed:
+    name: All checks passed
+    needs: [check, test]
+    runs-on: ubuntu-24.04
+    steps:
+      - run: ":"
+
   build:
     name: Build artifacts [${{ matrix.platform.name }}]
+    if: github.event_name == 'push'
     strategy:
       matrix:
         platform:
           - name: x86_64-linux
-            runs_on: ubuntu-22.04
+            runs_on: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             tools_target: x86_64-unknown-linux-musl
             packed_exec: brioche-packed-userland-exec
           - name: aarch64-linux
-            runs_on: ubuntu-22.04-arm
+            runs_on: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             tools_target: aarch64-unknown-linux-musl
             packed_exec: brioche-packed-userland-exec
           - name: x86_64-macos
-            runs_on: macos-14
+            runs_on: macos-15
             target: x86_64-apple-darwin
             tools_target: x86_64-apple-darwin
             packed_exec: brioche-packed-plain-exec
           - name: aarch64-macos
-            runs_on: macos-14
+            runs_on: macos-15
             target: aarch64-apple-darwin
             tools_target: aarch64-apple-darwin
             packed_exec: brioche-packed-plain-exec
@@ -137,18 +145,11 @@ jobs:
           if-no-files-found: error
           path: artifacts/brioche
 
-  all-checks-passed:
-    name: All checks passed
-    needs: [check, test, build]
-    runs-on: ubuntu-22.04
-    steps:
-      - run: ":"
-
   push:
     name: Push artifacts
-    if: github.repository == 'brioche-dev/brioche-runtime-utils'
-    needs: [all-checks-passed]
-    runs-on: ubuntu-22.04
+    if: github.event_name == 'push' && github.repository == 'brioche-dev/brioche-runtime-utils'
+    needs: [all-checks-passed, build]
+    runs-on: ubuntu-24.04
     steps:
       - name: Download artifacts (x86_64-linux)
         uses: actions/download-artifact@v4
@@ -218,4 +219,3 @@ jobs:
           AWS_REQUEST_CHECKSUM_CALCULATION: WHEN_REQUIRED
           AWS_RESPONSE_CHECKSUM_CALCULATION: WHEN_REQUIRED
           S3_ENDPOINT: ${{ secrets.R2_S3_ENDPOINT }}
-
