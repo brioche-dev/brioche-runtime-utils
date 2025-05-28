@@ -107,6 +107,7 @@ fn run() -> eyre::Result<ExitCode> {
             // Parse the arguments from the file
             let args_from_file = file_args_parser()
                 .parse(&file_contents[..])
+                .into_result()
                 .map_err(|error| {
                     eyre::eyre!(
                         "failed to parse args from path {}: {error:#?}",
@@ -204,26 +205,30 @@ fn run() -> eyre::Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-fn file_args_parser() -> impl Parser<u8, Vec<bstr::BString>, Error = Simple<u8>> {
+fn file_args_parser<'a>() -> impl Parser<'a, &'a [u8], Vec<bstr::BString>, extra::Err<Rich<'a, u8>>>
+{
     let escape = just(b'\\').ignore_then(any());
     let bare_arg = none_of(b"\\\"' \t\r\n\x0C")
         .or(escape)
         .repeated()
-        .at_least(1);
+        .at_least(1)
+        .collect();
     let double_quoted_arg = none_of(b"\\\"")
         .or(escape)
         .repeated()
+        .collect()
         .delimited_by(just(b'"'), just(b'"'));
     let single_quoted_arg = none_of(b"\\'")
         .or(escape)
         .repeated()
+        .collect()
         .delimited_by(just(b'\''), just(b'\''));
     let arg = bare_arg
         .or(double_quoted_arg)
         .or(single_quoted_arg)
         .padded()
         .map(bstr::BString::new);
-    arg.repeated().then_ignore(end())
+    arg.repeated().collect()
 }
 
 #[cfg(test)]
@@ -254,8 +259,8 @@ mod tests {
             [&b"a"[..], &b"\x00\xFF"[..], &b"b"[..]],
         );
 
-        assert!(parser.parse(b"\\").is_err());
-        assert!(parser.parse(b"\"").is_err());
-        assert!(parser.parse(b"'").is_err());
+        assert!(parser.parse(b"\\").has_errors());
+        assert!(parser.parse(b"\"").has_errors());
+        assert!(parser.parse(b"'").has_errors());
     }
 }
