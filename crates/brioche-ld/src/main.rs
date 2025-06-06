@@ -245,7 +245,6 @@ mod tests {
         assert_eq!(parser.parse(b"").unwrap(), EMPTY_OUTPUT);
         assert_eq!(parser.parse(b"foo").unwrap(), ["foo"]);
         assert_eq!(parser.parse(b"foo bar baz").unwrap(), ["foo", "bar", "baz"]);
-        assert_eq!(parser.parse(b"foo bar baz").unwrap(), ["foo", "bar", "baz"]);
         assert_eq!(parser.parse(b"\"\"").unwrap(), [b""]);
         assert_eq!(parser.parse(b"''").unwrap(), [b""]);
         assert_eq!(

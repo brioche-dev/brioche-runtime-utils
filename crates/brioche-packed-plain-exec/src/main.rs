@@ -244,7 +244,7 @@ fn run() -> Result<(), PackedError> {
                 Err(PackedError::IoError(error))
             }
             _ => {
-                unimplemented!("unknown metdata format {format:?}");
+                unimplemented!("unknown metadata format {format:?}");
             }
         },
     }
@@ -272,6 +272,6 @@ enum PackedError {
     InvalidPathBytes { path: bstr::BString },
     #[error("invalid path: {path:?}")]
     InvalidPath { path: PathBuf },
-    #[error("unconvertable path: {path:?}")]
+    #[error("unconvertible path: {path:?}")]
     InvalidPathOsString { path: OsString },
 }
