@@ -326,7 +326,7 @@ fn autopack_context(config: &AutopackConfig) -> eyre::Result<AutopackContext> {
         for entry in library_path_env_dir_entries {
             let entry = entry?;
             eyre::ensure!(
-                entry.metadata()?.is_symlink(),
+                entry.file_type()?.is_symlink(),
                 "expected {:?} to be a symlink",
                 entry.path()
             );
@@ -355,7 +355,7 @@ fn autopack_context(config: &AutopackConfig) -> eyre::Result<AutopackContext> {
         for entry in path_env_dir_entries {
             let entry = entry?;
             eyre::ensure!(
-                entry.metadata()?.is_symlink(),
+                entry.file_type()?.is_symlink(),
                 "expected {:?} to be a symlink",
                 entry.path()
             );
