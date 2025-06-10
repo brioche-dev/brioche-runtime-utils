@@ -1050,12 +1050,9 @@ fn add_named_blob_from(
     let mode = permissions.mode();
     let is_executable = mode & 0o111 != 0;
 
-    let mut contents = vec![];
-    file.read_to_end(&mut contents)?;
-
     let resource_path = brioche_resources::add_named_blob(
         &ctx.config.resource_dir,
-        std::io::Cursor::new(contents),
+        &mut file,
         is_executable,
         alias_name,
     )?;
