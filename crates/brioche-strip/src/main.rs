@@ -438,9 +438,10 @@ fn finish_remapped_file(remapped_file: RemapFile) -> eyre::Result<()> {
                     // Add the temp file as a new resource. We re-use the
                     // original program's name and permissions
                     temp_file.rewind()?;
+                    let temp_file_reader = std::io::BufReader::new(temp_file);
                     let new_source_resource = brioche_resources::add_named_blob(
                         &output_resource_dir,
-                        &mut temp_file,
+                        temp_file_reader,
                         is_executable,
                         program_name,
                     )?;

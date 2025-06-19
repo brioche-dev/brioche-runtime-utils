@@ -106,40 +106,51 @@ fn find_resource_dirs_from_program(
 
 pub fn add_named_blob(
     resource_dir: &Path,
-    mut contents: impl std::io::Seek + std::io::Read,
+    mut contents: impl std::io::BufRead,
     executable: bool,
     name: &Path,
 ) -> Result<PathBuf, AddBlobError> {
-    // Hash the contents, which we'll use as the blob's name
-    let mut hasher = blake3::Hasher::new();
-    std::io::copy(&mut contents, &mut hasher)?;
-    let hash = hasher.finalize();
-
-    // Add a suffix to distinguish identical blobs by their permissions
-    let blob_suffix = if executable { ".x" } else { "" };
-    let blob_name = format!("{hash}{blob_suffix}");
-
-    // Rewind the blob to copy it to a file
-    contents.seek(std::io::SeekFrom::Start(0))?;
-
     // Create the 'blobs' directory
     let blob_dir = resource_dir.join("blobs");
-    let blob_path = blob_dir.join(&blob_name);
     std::fs::create_dir_all(&blob_dir)?;
 
-    // Copy the blob to a temporary file
+    // Open a temporary file to copy the contents to
     let blob_temp_id = ulid::Ulid::new();
-    let blob_temp_path = blob_dir.join(format!("{blob_name}-{blob_temp_id}"));
+    let blob_temp_path = blob_dir.join(blob_temp_id.to_string());
     let mut blob_file_options = std::fs::OpenOptions::new();
     blob_file_options.create_new(true).write(true);
     if executable {
         blob_file_options.mode(0o777);
     }
     let mut blob_file = blob_file_options.open(&blob_temp_path)?;
-    std::io::copy(&mut contents, &mut blob_file)?;
-    drop(blob_file);
+
+    // Read the contents, both copying it to the temporary file and hashing
+    // as we go
+    let mut hasher = blake3::Hasher::new();
+    loop {
+        let buf = contents.fill_buf()?;
+        if buf.is_empty() {
+            break;
+        }
+
+        hasher.update(buf);
+        blob_file.write_all(buf)?;
+
+        let consumed = buf.len();
+        contents.consume(consumed);
+    }
+
+    // Get the hash of the contents, which we'll use as the blob's name
+    let hash = hasher.finalize();
+
+    // Get the final blob's filename. We use a suffix to distinguish identical
+    // blobs with different permissions
+    let blob_suffix = if executable { ".x" } else { "" };
+    let blob_name = format!("{hash}{blob_suffix}");
+    let blob_path = blob_dir.join(&blob_name);
 
     // Rename the blob to its final path
+    drop(blob_file);
     std::fs::rename(&blob_temp_path, &blob_path)?;
 
     // Create a temporary directory for the alias dir

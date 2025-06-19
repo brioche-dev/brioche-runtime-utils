@@ -240,9 +240,10 @@ fn run_update_source(args: &UpdateSourceArgs) -> eyre::Result<()> {
             let new_source_permissions = new_source.metadata()?.permissions();
             let is_executable = is_executable(&new_source_permissions);
 
+            let new_source_reader = std::io::BufReader::new(new_source);
             let new_source_resource = brioche_resources::add_named_blob(
                 &output_resource_dir,
-                &new_source,
+                new_source_reader,
                 is_executable,
                 new_name,
             )?;
