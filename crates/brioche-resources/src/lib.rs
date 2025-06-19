@@ -121,10 +121,10 @@ pub fn add_named_blob(
 
     let blob_dir = resource_dir.join("blobs");
     let blob_path = blob_dir.join(&blob_name);
-    let blob_temp_id = ulid::Ulid::new();
-    let blob_temp_path = blob_dir.join(format!("{blob_name}-{blob_temp_id}"));
     std::fs::create_dir_all(&blob_dir)?;
 
+    let blob_temp_id = ulid::Ulid::new();
+    let blob_temp_path = blob_dir.join(format!("{blob_name}-{blob_temp_id}"));
     let mut blob_file_options = std::fs::OpenOptions::new();
     blob_file_options.create_new(true).write(true);
     if executable {
@@ -135,21 +135,48 @@ pub fn add_named_blob(
     drop(blob_file);
     std::fs::rename(&blob_temp_path, &blob_path)?;
 
-    let alias_dir = resource_dir.join("aliases").join(name).join(&blob_name);
-    std::fs::create_dir_all(&alias_dir)?;
+    let alias_temp_dir = resource_dir.join(format!("{blob_name}-{blob_temp_id}-alias"));
+    let alias_temp_path = alias_temp_dir.join(name);
+    std::fs::create_dir(&alias_temp_dir)?;
 
-    let temp_alias_path = alias_dir.join(format!("{}-{blob_temp_id}", name.display()));
-    let alias_path = alias_dir.join(name);
+    let alias_parent_dir = resource_dir.join("aliases").join(name);
+    let alias_dir = alias_parent_dir.join(&blob_name);
     let blob_pack_relative_path = pathdiff::diff_paths(&blob_path, &alias_dir)
         .expect("blob path is not a prefix of alias path");
-    std::os::unix::fs::symlink(blob_pack_relative_path, &temp_alias_path)?;
-    std::fs::rename(&temp_alias_path, &alias_path)?;
+    std::os::unix::fs::symlink(&blob_pack_relative_path, &alias_temp_path)?;
+
+    std::fs::create_dir_all(&alias_parent_dir)?;
+
+    let alias_path = alias_dir.join(name);
+    let result = std::fs::rename(&alias_temp_dir, alias_dir);
+    match result {
+        Ok(()) => {}
+        Err(err)
+            if err.kind() == std::io::ErrorKind::AlreadyExists
+                || err.kind() == std::io::ErrorKind::DirectoryNotEmpty =>
+        {
+            std::fs::remove_dir_all(&alias_temp_dir)?;
+
+            let result = std::os::unix::fs::symlink(&blob_pack_relative_path, &alias_path);
+            match result {
+                Ok(()) => {}
+                Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(err) => {
+                    return Err(err.into());
+                }
+            }
+        }
+        Err(err) => {
+            return Err(err.into());
+        }
+    }
 
     let alias_path = alias_path
         .strip_prefix(resource_dir)
         .expect("alias path is not in resource dir");
     Ok(alias_path.to_owned())
 }
+
 pub fn add_named_resource_directory(
     resource_dir: &Path,
     source: &Path,
