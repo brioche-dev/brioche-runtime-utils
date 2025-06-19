@@ -1043,16 +1043,17 @@ fn add_named_blob_from(
         Path::new(filename)
     };
 
-    let mut file = std::fs::File::open(path)?;
+    let file = std::fs::File::open(path)?;
     let metadata = file.metadata()?;
 
     let permissions = metadata.permissions();
     let mode = permissions.mode();
     let is_executable = mode & 0o111 != 0;
 
+    let file_reader = std::io::BufReader::new(file);
     let resource_path = brioche_resources::add_named_blob(
         &ctx.config.resource_dir,
-        &mut file,
+        file_reader,
         is_executable,
         alias_name,
     )?;
