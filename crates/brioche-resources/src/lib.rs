@@ -110,19 +110,24 @@ pub fn add_named_blob(
     executable: bool,
     name: &Path,
 ) -> Result<PathBuf, AddBlobError> {
+    // Hash the contents, which we'll use as the blob's name
     let mut hasher = blake3::Hasher::new();
     std::io::copy(&mut contents, &mut hasher)?;
     let hash = hasher.finalize();
 
+    // Add a suffix to distinguish identical blobs by their permissions
     let blob_suffix = if executable { ".x" } else { "" };
     let blob_name = format!("{hash}{blob_suffix}");
 
+    // Rewind the blob to copy it to a file
     contents.seek(std::io::SeekFrom::Start(0))?;
 
+    // Create the 'blobs' directory
     let blob_dir = resource_dir.join("blobs");
     let blob_path = blob_dir.join(&blob_name);
     std::fs::create_dir_all(&blob_dir)?;
 
+    // Copy the blob to a temporary file
     let blob_temp_id = ulid::Ulid::new();
     let blob_temp_path = blob_dir.join(format!("{blob_name}-{blob_temp_id}"));
     let mut blob_file_options = std::fs::OpenOptions::new();
@@ -133,34 +138,54 @@ pub fn add_named_blob(
     let mut blob_file = blob_file_options.open(&blob_temp_path)?;
     std::io::copy(&mut contents, &mut blob_file)?;
     drop(blob_file);
+
+    // Rename the blob to its final path
     std::fs::rename(&blob_temp_path, &blob_path)?;
 
+    // Create a temporary directory for the alias dir
     let alias_temp_dir = resource_dir.join(format!("{blob_name}-{blob_temp_id}-alias"));
     let alias_temp_path = alias_temp_dir.join(name);
     std::fs::create_dir(&alias_temp_dir)?;
 
+    // Create the symlink within the temporary dir
     let alias_parent_dir = resource_dir.join("aliases").join(name);
     let alias_dir = alias_parent_dir.join(&blob_name);
     let blob_pack_relative_path = pathdiff::diff_paths(&blob_path, &alias_dir)
         .expect("blob path is not a prefix of alias path");
     std::os::unix::fs::symlink(&blob_pack_relative_path, &alias_temp_path)?;
 
+    // Create directory for the alias dir
     std::fs::create_dir_all(&alias_parent_dir)?;
 
+    // Rename the temp dir to the final alias path. This ensures that the alias
+    // dir itself is atomic, and never appears empty
     let alias_path = alias_dir.join(name);
     let result = std::fs::rename(&alias_temp_dir, alias_dir);
     match result {
-        Ok(()) => {}
+        Ok(()) => {
+            // Alias dir created successfully
+        }
         Err(err)
             if err.kind() == std::io::ErrorKind::AlreadyExists
                 || err.kind() == std::io::ErrorKind::DirectoryNotEmpty =>
         {
+            // Could not rename temp alias dir to final path. On Unix, this
+            // means that the alias dir already exists and is non-empty
+
+            // Clean up the temporary dir first
             std::fs::remove_dir_all(&alias_temp_dir)?;
 
+            // Try to create the symlink again-- this time in its final path
             let result = std::os::unix::fs::symlink(&blob_pack_relative_path, &alias_path);
             match result {
-                Ok(()) => {}
-                Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Ok(()) => {
+                    // Symlink created successfully. This means the alias
+                    // dir already existed and was not empty, but contained
+                    // something else? This probably shouldn't happen...
+                }
+                Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+                    // Path already exists, nothing to do
+                }
                 Err(err) => {
                     return Err(err.into());
                 }
@@ -171,6 +196,7 @@ pub fn add_named_blob(
         }
     }
 
+    // Return the symlink alias path relative to the resource dir
     let alias_path = alias_path
         .strip_prefix(resource_dir)
         .expect("alias path is not in resource dir");
