@@ -23,5 +23,3 @@ updates:
       cargo:
         patterns:
           - "*"
-    ignore:
-      - dependency-name: "schemars"

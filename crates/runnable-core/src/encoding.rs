@@ -32,12 +32,12 @@ where
     }
 }
 
-impl<T> serde_with::schemars_0_8::JsonSchemaAs<T> for TickEncoded {
-    fn schema_name() -> String {
-        "TickEncoded".to_string()
+impl<T> serde_with::schemars_0_9::JsonSchemaAs<T> for TickEncoded {
+    fn schema_name() -> Cow<'static, str> {
+        Cow::Borrowed("TickEncoded")
     }
 
-    fn json_schema(generator: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+    fn json_schema(generator: &mut schemars::generate::SchemaGenerator) -> schemars::Schema {
         <String as schemars::JsonSchema>::json_schema(generator)
     }
 }
