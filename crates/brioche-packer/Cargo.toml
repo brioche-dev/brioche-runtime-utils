@@ -15,7 +15,7 @@ eyre = "0.6.12"
 globset = "0.4.16"
 goblin = "0.10.0"
 runnable-core = { path = "../runnable-core" }
-schemars = "0.9.0"
+schemars = "1.0.2"
 serde = { version = "1.0.203", features = ["derive"] }
 serde_json = { version = "1.0.140" }
 serde_with = { version = "3.13.0", features = ["schemars_0_9"] }
