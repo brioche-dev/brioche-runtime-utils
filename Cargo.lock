@@ -214,7 +214,7 @@ dependencies = [
 [[package]]
 name = "brioche-pack"
 version = "0.1.5"
-source = "git+https://github.com/brioche-dev/brioche.git#28a82dd30eea56c42ed2b97522277e3741b9b9a1"
+source = "git+https://github.com/brioche-dev/brioche.git#cf6f6fcf30f5baa4a20f9cd5f24c69639ee1a653"
 dependencies = [
  "bincode",
  "bstr",
@@ -265,7 +265,7 @@ dependencies = [
  "globset",
  "goblin 0.10.0",
  "runnable-core",
- "schemars",
+ "schemars 1.0.2",
  "serde",
  "serde_json",
  "serde_with",
@@ -953,7 +953,7 @@ dependencies = [
  "bincode",
  "brioche-resources",
  "bstr",
- "schemars",
+ "schemars 1.0.2",
  "serde",
  "serde_with",
  "thiserror",
@@ -1002,6 +1002,18 @@ checksum = "4cd191f9397d57d581cddd31014772520aa448f65ef991055d7f61582c65165f"
 dependencies = [
  "dyn-clone",
  "ref-cast",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "schemars"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab5f657913eee4bddb062d3aa42193b9285e0e333f852885909a27d867579f2a"
+dependencies = [
+ "dyn-clone",
+ "ref-cast",
  "schemars_derive",
  "serde",
  "serde_json",
@@ -1009,9 +1021,9 @@ dependencies = [
 
 [[package]]
 name = "schemars_derive"
-version = "0.9.0"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5016d94c77c6d32f0b8e08b781f7dc8a90c2007d4e77472cc2807bc10a8438fe"
+checksum = "5d367383cbc8d37ce3aa513ca69daf21053d8e96c999fec305c2b402d790e66c"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1113,7 +1125,7 @@ dependencies = [
  "hex",
  "indexmap 1.9.3",
  "indexmap 2.2.6",
- "schemars",
+ "schemars 0.9.0",
  "serde",
  "serde_derive",
  "serde_json",
