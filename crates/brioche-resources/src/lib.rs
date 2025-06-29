@@ -17,19 +17,19 @@ pub fn find_resource_dirs(
         paths.push(PathBuf::from(pack_resource_dir));
     }
 
-    if include_readonly {
-        if let Some(input_resource_dirs) = std::env::var_os("BRIOCHE_INPUT_RESOURCE_DIRS") {
-            if let Some(input_resource_dirs) = <[u8]>::from_os_str(&input_resource_dirs) {
-                for input_resource_dir in input_resource_dirs.split_str(b":") {
-                    if let Ok(path) = input_resource_dir.to_path() {
-                        paths.push(path.to_owned());
-                    }
+    if include_readonly
+        && let Some(input_resource_dirs) = std::env::var_os("BRIOCHE_INPUT_RESOURCE_DIRS")
+    {
+        if let Some(input_resource_dirs) = <[u8]>::from_os_str(&input_resource_dirs) {
+            for input_resource_dir in input_resource_dirs.split_str(b":") {
+                if let Ok(path) = input_resource_dir.to_path() {
+                    paths.push(path.to_owned());
                 }
             }
+        }
 
-            for input_resource_dir in std::env::split_paths(&input_resource_dirs) {
-                paths.push(input_resource_dir);
-            }
+        for input_resource_dir in std::env::split_paths(&input_resource_dirs) {
+            paths.push(input_resource_dir);
         }
     }
 
