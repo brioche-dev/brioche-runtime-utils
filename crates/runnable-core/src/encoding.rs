@@ -32,7 +32,7 @@ where
     }
 }
 
-impl<T> serde_with::schemars_0_9::JsonSchemaAs<T> for TickEncoded {
+impl<T> serde_with::schemars_1::JsonSchemaAs<T> for TickEncoded {
     fn schema_name() -> Cow<'static, str> {
         Cow::Borrowed("TickEncoded")
     }
