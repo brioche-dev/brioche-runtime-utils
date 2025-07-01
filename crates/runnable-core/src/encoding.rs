@@ -34,7 +34,7 @@ where
 
 impl<T> serde_with::schemars_1::JsonSchemaAs<T> for TickEncoded {
     fn schema_name() -> Cow<'static, str> {
-        Cow::Borrowed("TickEncoded")
+        "TickEncoded".into()
     }
 
     fn json_schema(generator: &mut schemars::generate::SchemaGenerator) -> schemars::Schema {
