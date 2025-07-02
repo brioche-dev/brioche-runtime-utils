@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - 'build/**'
+      - "build/**"
   pull_request:
 
 concurrency:
@@ -67,7 +67,6 @@ jobs:
             target: aarch64-apple-darwin
             tools_target: aarch64-apple-darwin
             packed_exec: brioche-packed-plain-exec
-
     runs-on: ${{ matrix.platform.runs_on }}
     steps:
       - name: Checkout code
