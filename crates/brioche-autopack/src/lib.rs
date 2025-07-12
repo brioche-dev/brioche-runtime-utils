@@ -930,7 +930,7 @@ fn collect_all_library_dirs(
 
             let is_new_library_path = found_library_dirs.insert(library_resource_dir.clone());
             if is_new_library_path {
-                resource_library_dirs.push(library_resource_dir.clone());
+                resource_library_dirs.push(library_resource_dir);
             }
         }
 
