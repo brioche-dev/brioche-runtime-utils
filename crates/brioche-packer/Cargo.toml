@@ -17,7 +17,7 @@ goblin = "0.10.0"
 runnable-core = { path = "../runnable-core" }
 schemars = "1.0.4"
 serde = { version = "1.0.203", features = ["derive"] }
-serde_json = { version = "1.0.140" }
+serde_json = { version = "1.0.141" }
 serde_with = { version = "3.14.0", features = ["schemars_1"] }
 walkdir = "2.5.0"
 
