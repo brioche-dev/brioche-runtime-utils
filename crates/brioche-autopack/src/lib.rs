@@ -299,7 +299,7 @@ struct AutopackContext<'a> {
     link_dependency_paths: Vec<PathBuf>,
 }
 
-fn autopack_context(config: &AutopackConfig) -> eyre::Result<AutopackContext> {
+fn autopack_context(config: &AutopackConfig) -> eyre::Result<AutopackContext<'_>> {
     let mut link_dependency_library_paths = vec![];
     let mut link_dependency_paths = vec![];
     for link_dep in &config.link_dependencies {
