@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Check formatting
         run: cargo fmt -- --check
       - name: Check Clippy
@@ -36,7 +36,7 @@ jobs:
     runs-on: ${{ matrix.runs_on }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       # Run tests in release mode. Running tests in debug mode uses a lot
       # more disk space, so much so that it can cause the run to fail
       - name: Run tests
@@ -70,7 +70,7 @@ jobs:
     runs-on: ${{ matrix.platform.runs_on }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Install Rust targets
         run: rustup target add "$TARGET" "$TOOLS_TARGET"
         env:
