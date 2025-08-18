@@ -9,11 +9,11 @@ brioche-autopack = { path = "../brioche-autopack" }
 brioche-pack = { workspace = true }
 brioche-resources = { path = "../brioche-resources" }
 bstr = "1.9.1"
-clap = { version = "4.5.43", features = ["derive"] }
+clap = { version = "4.5.45", features = ["derive"] }
 color-eyre = "0.6.5"
 eyre = "0.6.12"
 globset = "0.4.16"
-goblin = "0.10.0"
+goblin = "0.10.1"
 runnable-core = { path = "../runnable-core" }
 schemars = "1.0.4"
 serde = { version = "1.0.203", features = ["derive"] }
