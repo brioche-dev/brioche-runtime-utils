@@ -11,7 +11,6 @@ use eyre::{Context as _, OptionExt as _};
 
 mod autopack_template;
 
-#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Parser)]
 enum Args {
     Pack {
@@ -135,7 +134,6 @@ fn run() -> eyre::Result<()> {
     Ok(())
 }
 
-#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Parser)]
 struct AutopackArgs {
     #[arg(long)]
