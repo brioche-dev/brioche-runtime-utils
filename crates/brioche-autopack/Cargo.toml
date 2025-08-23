@@ -13,8 +13,8 @@ globset = "0.4.16"
 goblin = "0.10.1"
 pathdiff = "0.2.3"
 runnable-core = { path = "../runnable-core" }
-serde_json = "1.0.142"
-thiserror = "2.0.14"
+serde_json = "1.0.143"
+thiserror = "2.0.16"
 walkdir = "2.5.0"
 
 [lints]
