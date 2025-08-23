@@ -10,8 +10,8 @@ brioche-resources = { path = "../brioche-resources" }
 bstr = "1.8.0"
 libc = "0.2.175"
 runnable-core = { path = "../runnable-core" }
-serde_json = "1.0.142"
-thiserror = "2.0.14"
+serde_json = "1.0.143"
+thiserror = "2.0.16"
 
 [lints]
 workspace = true
