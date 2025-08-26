@@ -784,6 +784,7 @@ fn autopack_script(
         command,
         args,
         env,
+        dependencies: vec![],
         clear_env: script_config.clear_env,
         source: Some(runnable_core::RunnableSource {
             path: runnable_core::RunnablePath::from_resource_path(script_resource)?,

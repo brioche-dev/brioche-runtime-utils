@@ -27,6 +27,9 @@ pub struct Runnable {
     #[serde_as(as = "serde_with::Map<_, _>")]
     pub env: Vec<(String, EnvValue)>,
 
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dependencies: Vec<RunnablePath>,
+
     pub clear_env: bool,
 
     #[serde(default)]
@@ -235,6 +238,31 @@ impl RunnablePath {
         let resource = Vec::<u8>::from_path_buf(resource_path)
             .map_err(|_| RunnableTemplateError::PathError)?;
         Ok(Self::Resource { resource })
+    }
+
+    pub fn to_path(
+        &self,
+        program: &Path,
+        resource_dirs: &[PathBuf],
+    ) -> Result<PathBuf, RunnableTemplateError> {
+        let path = match self {
+            Self::RelativePath { path } => {
+                let program_dir = program
+                    .parent()
+                    .ok_or(RunnableTemplateError::InvalidProgramPath)?;
+                let path = path.to_path()?;
+                program_dir.join(path)
+            }
+            Self::Resource { resource } => {
+                let resource_subpath = resource.to_path()?;
+                brioche_resources::find_in_resource_dirs(resource_dirs, resource_subpath)
+                    .ok_or_else(|| {
+                        let resource = bstr::BString::new(resource.clone());
+                        RunnableTemplateError::ResourceNotFound { resource }
+                    })?
+            }
+        };
+        Ok(path)
     }
 }
 

@@ -1,8 +1,12 @@
-use std::{ffi::OsString, os::unix::process::CommandExt as _, path::PathBuf, process::ExitCode};
+use std::{
+    collections::HashMap, ffi::OsString, os::unix::process::CommandExt as _, path::PathBuf,
+    process::ExitCode,
+};
 
-use bstr::ByteSlice as _;
+use bstr::{ByteSlice as _, ByteVec as _};
 
 const BRIOCHE_PACKED_ERROR: u8 = 121;
+const PATH_SEPARATOR: &str = ":";
 
 #[must_use]
 pub fn main() -> ExitCode {
@@ -167,78 +171,166 @@ fn run() -> Result<(), PackedError> {
                     }
                 }
 
-                if runnable.clear_env {
-                    command.env_clear();
-                }
+                let mut envs = EnvVarChanges::new(runnable.clear_env);
 
-                for (env_name, env_value) in &runnable.env {
+                // Clear/inherit explicit env vars up front before applying any
+                // other env var changes
+                for (env_var, env_value) in &runnable.env {
                     match env_value {
+                        runnable_core::EnvValue::Set { .. } => {
+                            // Set - do nothing, the env var will be overridden
+                        }
                         runnable_core::EnvValue::Clear => {
-                            command.env_remove(env_name);
-                        }
-                        runnable_core::EnvValue::Inherit => {
-                            let value = std::env::var_os(env_name);
-                            if let Some(value) = value {
-                                command.env(env_name, value);
-                            }
-                        }
-                        runnable_core::EnvValue::Set { value } => {
-                            let value = value.to_os_string(&program_path, &resource_dirs)?;
-                            command.env(env_name, value);
+                            // Clear - start with an initial blank value
+                            envs.clear(env_var.to_string());
                         }
                         runnable_core::EnvValue::Fallback { value } => {
-                            let current_value = std::env::var_os(env_name);
-                            let current_value = current_value.filter(|value| !value.is_empty());
-                            let value = match current_value {
-                                Some(current_value) => current_value,
-                                None => value.to_os_string(&program_path, &resource_dirs)?,
-                            };
-                            command.env(env_name, value);
+                            // Fallback - explicitly inherit the env var, then
+                            // set an initial value if not already set
+                            envs.inherit(env_var.to_string());
+
+                            let inherited_value = envs.get_mut(env_var.to_string());
+                            if inherited_value.is_none() {
+                                let value = value.to_os_string(&program_path, &resource_dirs)?;
+                                *inherited_value = Some(value);
+                            }
                         }
-                        runnable_core::EnvValue::Prepend { value, separator } => {
-                            let mut value = value.to_os_string(&program_path, &resource_dirs)?;
-                            let separator =
-                                separator
-                                    .to_os_str()
-                                    .map_err(|_| PackedError::InvalidUtf8 {
-                                        bytes: separator.clone().into(),
-                                    })?;
-
-                            let current_value = std::env::var_os(env_name);
-                            let new_value = match current_value {
-                                Some(current_value) if !current_value.is_empty() => {
-                                    value.push(separator);
-                                    value.push(current_value);
-
-                                    value
-                                }
-                                _ => value,
-                            };
-                            command.env(env_name, new_value);
-                        }
-                        runnable_core::EnvValue::Append { value, separator } => {
-                            let value = value.to_os_string(&program_path, &resource_dirs)?;
-                            let separator =
-                                separator
-                                    .to_os_str()
-                                    .map_err(|_| PackedError::InvalidUtf8 {
-                                        bytes: separator.clone().into(),
-                                    })?;
-
-                            let current_value = std::env::var_os(env_name);
-                            let new_value = match current_value {
-                                Some(mut current_value) if !current_value.is_empty() => {
-                                    current_value.push(separator);
-                                    current_value.push(value);
-
-                                    current_value
-                                }
-                                _ => value,
-                            };
-                            command.env(env_name, new_value);
+                        runnable_core::EnvValue::Inherit
+                        | runnable_core::EnvValue::Prepend { .. }
+                        | runnable_core::EnvValue::Append { .. } => {
+                            // Inherit, prepend, and append should all start
+                            // with the inherited env var initially before
+                            // making any other changes
+                            envs.inherit(env_var.to_string());
                         }
                     }
                 }
+
+                // Apply env vars from dependencies
+                for dependency in runnable.dependencies {
+                    let dependency_path = dependency.to_path(&program_path, &resource_dirs)?;
+
+                    // Try to read the `brioche-env.d/env` directory from the
+                    // dependency. Each entry within the directory will set
+                    // an env var based on the entry name
+                    let env_dir = dependency_path.join("brioche-env.d/env");
+                    let env_dir_entries = std::fs::read_dir(&env_dir).into_iter().flatten();
+                    for env_dir_entry in env_dir_entries {
+                        let env_dir_entry = env_dir_entry?;
+
+                        let env_var = env_dir_entry.file_name().into_string().map_err(|_| {
+                            PackedError::InvalidDependencyEnvVar {
+                                dependency: dependency_path.clone(),
+                                env_var: env_dir_entry.file_name(),
+                            }
+                        })?;
+                        let env_dir_entry_path = env_dir_entry.path();
+                        let env_dir_entry_type = env_dir_entry.file_type()?;
+
+                        if env_dir_entry_type.is_dir() {
+                            // Directory - each sub-entry should be a symlink.
+                            // The symlink targets will be appended to the env
+                            // var using the path separator
+
+                            let env_value_entries = std::fs::read_dir(&env_dir_entry_path)?;
+                            let mut env_value_entries = env_value_entries
+                                .into_iter()
+                                .map(|entry| entry.map_err(PackedError::IoError))
+                                .collect::<Result<Vec<_>, PackedError>>()?;
+                            env_value_entries.sort_by_key(std::fs::DirEntry::file_name);
+
+                            let mut env_value_append = OsString::new();
+                            for (i, env_value_entry) in env_value_entries.into_iter().enumerate() {
+                                if i != 0 {
+                                    env_value_append.push(PATH_SEPARATOR);
+                                }
+
+                                let env_value_entry_type = env_value_entry.file_type()?;
+                                if !env_value_entry_type.is_symlink() {
+                                    return Err(PackedError::InvalidDependencyEnvVar {
+                                        dependency: dependency_path,
+                                        env_var: env_dir_entry.file_name(),
+                                    });
+                                }
+
+                                let value_path = std::fs::canonicalize(env_value_entry.path())?;
+                                env_value_append.push(value_path);
+                            }
+
+                            envs.append(env_var, env_value_append, PATH_SEPARATOR.as_ref());
+                        } else if env_dir_entry_type.is_file() {
+                            // File - the file's contents will be used as a
+                            // fallback value for the env var
+
+                            let current_value = envs.get_mut(env_var);
+                            if current_value.is_none() {
+                                let content = std::fs::read(env_dir_entry.path())?;
+                                let content = content.into_os_string().map_err(|_| {
+                                    PackedError::InvalidDependencyEnvVar {
+                                        dependency: dependency_path.clone(),
+                                        env_var: env_dir_entry.file_name(),
+                                    }
+                                })?;
+                                *current_value = Some(content);
+                            }
+                        } else if env_dir_entry_type.is_symlink() {
+                            // Symlink - the symlink target path will be used
+                            // as a fallback value for the env var
+
+                            let current_value = envs.get_mut(env_var);
+                            if current_value.is_none() {
+                                let value_path = std::fs::canonicalize(env_dir_entry.path())?;
+                                *current_value = Some(value_path.into_os_string());
+                            }
+                        }
+                    }
+                }
+
+                // Finally, apply the explicitly-set env vars
+                for (env_name, env_value) in runnable.env {
+                    match &env_value {
+                        runnable_core::EnvValue::Clear
+                        | runnable_core::EnvValue::Inherit
+                        | runnable_core::EnvValue::Fallback { .. } => {
+                            // Already applied beforehand
+                        }
+                        runnable_core::EnvValue::Set { value } => {
+                            // Override the env var with the provided value
+
+                            let value = value.to_os_string(&program_path, &resource_dirs)?;
+                            envs.set(env_name, value);
+                        }
+                        runnable_core::EnvValue::Prepend { value, separator } => {
+                            // Prepend the env var
+
+                            let value = value.to_os_string(&program_path, &resource_dirs)?;
+                            let separator =
+                                separator
+                                    .to_os_str()
+                                    .map_err(|_| PackedError::InvalidUtf8 {
+                                        bytes: separator.clone().into(),
+                                    })?;
+
+                            envs.prepend(env_name, value, separator);
+                        }
+                        runnable_core::EnvValue::Append { value, separator } => {
+                            // Append the env var
+
+                            let value = value.to_os_string(&program_path, &resource_dirs)?;
+                            let separator =
+                                separator
+                                    .to_os_str()
+                                    .map_err(|_| PackedError::InvalidUtf8 {
+                                        bytes: separator.clone().into(),
+                                    })?;
+
+                            envs.append(env_name, value, separator);
+                        }
+                    }
+                }
+
+                // Apply the accumulated env var changes to the command
+                envs.apply_to_command(&mut command);
 
                 let error = command.exec();
                 Err(PackedError::IoError(error))
@@ -274,4 +366,81 @@ enum PackedError {
     InvalidPath { path: PathBuf },
     #[error("unconvertible path: {path:?}")]
     InvalidPathOsString { path: OsString },
+    #[error("invalid env var {env_var:?} in dependency: {dependency:?}")]
+    InvalidDependencyEnvVar {
+        dependency: PathBuf,
+        env_var: OsString,
+    },
+}
+
+struct EnvVarChanges {
+    clear_envs: bool,
+    envs: HashMap<String, Option<OsString>>,
+}
+
+impl EnvVarChanges {
+    fn new(clear_envs: bool) -> Self {
+        Self {
+            clear_envs,
+            envs: HashMap::new(),
+        }
+    }
+
+    fn get_mut(&mut self, env_var: String) -> &mut Option<OsString> {
+        self.envs.entry(env_var).or_insert_with_key(|env_var| {
+            if self.clear_envs {
+                None
+            } else {
+                std::env::var_os(env_var)
+            }
+        })
+    }
+
+    fn inherit(&mut self, env_var: String) {
+        let value = std::env::var_os(&env_var);
+        self.envs.insert(env_var, value);
+    }
+
+    fn set(&mut self, env_var: String, value: OsString) {
+        self.envs.insert(env_var, Some(value));
+    }
+
+    fn clear(&mut self, env_var: String) {
+        self.envs.insert(env_var, None);
+    }
+
+    fn prepend(&mut self, env_var: String, mut value: OsString, separator: &std::ffi::OsStr) {
+        let env_value = self.get_mut(env_var);
+
+        if let Some(current_value) = env_value.take() {
+            value.push(separator);
+            value.push(current_value);
+        }
+
+        *env_value = Some(value);
+    }
+
+    fn append(&mut self, env_var: String, value: OsString, separator: &std::ffi::OsStr) {
+        let current_value = self.get_mut(env_var);
+        if let Some(current_value) = current_value {
+            current_value.push(separator);
+            current_value.push(value);
+        } else {
+            *current_value = Some(value);
+        }
+    }
+
+    fn apply_to_command(self, command: &mut std::process::Command) {
+        if self.clear_envs {
+            command.env_clear();
+        }
+
+        for (env_var, env_value) in self.envs {
+            if let Some(env_value) = env_value {
+                command.env(env_var, env_value);
+            } else {
+                command.env_remove(env_var);
+            }
+        }
+    }
 }
