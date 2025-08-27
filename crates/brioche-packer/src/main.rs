@@ -13,7 +13,8 @@ mod autopack_template;
 
 #[derive(Debug, Parser)]
 enum Args {
-    Pack {
+    Autopack(AutopackArgs),
+    WritePack {
         #[arg(long)]
         packed: PathBuf,
         #[arg(long)]
@@ -21,8 +22,7 @@ enum Args {
         #[arg(long)]
         pack: String,
     },
-    Autopack(AutopackArgs),
-    Read {
+    ReadPack {
         program: PathBuf,
     },
     SourcePath {
@@ -75,7 +75,7 @@ fn run() -> eyre::Result<()> {
     let args = Args::parse();
 
     match args {
-        Args::Pack {
+        Args::WritePack {
             packed,
             output,
             pack,
@@ -97,7 +97,7 @@ fn run() -> eyre::Result<()> {
         Args::Autopack(args) => {
             run_autopack(args)?;
         }
-        Args::Read { program } => {
+        Args::ReadPack { program } => {
             let mut program = std::fs::File::open(program)?;
             let extracted = brioche_pack::extract_pack(&mut program)?;
 
