@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, HashMap, HashSet, VecDeque},
     io::{BufRead as _, Read as _, Write as _},
+    os::unix::fs::PermissionsExt as _,
     path::{Path, PathBuf},
 };
 
@@ -790,8 +791,6 @@ fn autopack_script(
         .chain(dependency_resources)
         .collect();
 
-    let command = runnable_core::Template::from_literal(interpreter.into());
-
     let mut args = vec![];
     if let Some(arg) = arg {
         args.push(runnable_core::ArgValue::Arg {
@@ -808,10 +807,17 @@ fn autopack_script(
         .collect::<eyre::Result<_>>()?;
     let dependencies = script_config
         .dependencies_for_output_path(output_path)
-        .collect::<eyre::Result<_>>()?;
+        .collect::<eyre::Result<Vec<_>>>()?;
+
+    let interpreter = find_script_interpreter(
+        interpreter,
+        &dependencies,
+        output_path,
+        &ctx.config.resource_dir,
+    )?;
 
     let runnable_pack = runnable_core::Runnable {
-        command,
+        command: interpreter,
         args,
         env,
         dependencies,
@@ -1109,4 +1115,39 @@ fn try_autopack_dependency(
     }
 
     Ok(())
+}
+
+fn find_script_interpreter(
+    interpreter: &str,
+    dependencies: &[runnable_core::RunnablePath],
+    output_path: &Path,
+    resource_dir: &PathBuf,
+) -> eyre::Result<runnable_core::Template> {
+    for dependency in dependencies {
+        let dependency_path = dependency
+            .to_path(output_path, std::slice::from_ref(resource_dir))
+            .context("dependency resource not found")?;
+
+        let interpreter_subpath = Path::new("bin").join(interpreter);
+        let dependency_interpreter_path = dependency_path.join(&interpreter_subpath);
+        let Ok(metadata) = std::fs::metadata(&dependency_interpreter_path) else {
+            continue;
+        };
+
+        let permissions = metadata.permissions();
+        let mode = permissions.mode();
+        let is_executable = mode & 0o111 != 0;
+        if metadata.is_file() && is_executable {
+            let interpreter_subpath =
+                Vec::from_path_buf(interpreter_subpath).map_err(|interpreter_subpath| {
+                    eyre::eyre!("failed to convert path {interpreter_subpath:?}")
+                })?;
+            return Ok(runnable_core::Template::from_runnable_subpath(
+                dependency.clone(),
+                Some(interpreter_subpath),
+            ));
+        }
+    }
+
+    eyre::bail!("script interpreter {interpreter:?} not found in any dependency");
 }

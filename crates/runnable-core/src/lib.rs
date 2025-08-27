@@ -133,6 +133,25 @@ impl Template {
         })
     }
 
+    #[must_use]
+    pub fn from_runnable_subpath(runnable_path: RunnablePath, subpath: Option<Vec<u8>>) -> Self {
+        let runnable_path = match runnable_path {
+            RunnablePath::RelativePath { path } => TemplateComponent::RelativePath { path },
+            RunnablePath::Resource { resource } => TemplateComponent::Resource { resource },
+        };
+        let mut template = Self::default();
+
+        template.components.push(runnable_path);
+        if let Some(mut subpath) = subpath {
+            subpath.insert(0, b'/');
+            template
+                .components
+                .push(TemplateComponent::Literal { value: subpath });
+        }
+
+        template
+    }
+
     pub fn to_os_string(
         &self,
         program: &Path,
