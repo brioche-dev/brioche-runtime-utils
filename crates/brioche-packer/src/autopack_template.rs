@@ -250,6 +250,9 @@ impl SharedLibraryConfigTemplate {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ScriptConfigTemplate {
+    #[serde(default)]
+    match_overrides: Vec<ScriptMatchOverrideTemplate>,
+
     packed_executable: TemplatePath,
 
     #[serde(default)]
@@ -272,12 +275,18 @@ impl ScriptConfigTemplate {
         recipe_path: &Path,
     ) -> eyre::Result<brioche_autopack::ScriptConfig> {
         let Self {
+            match_overrides,
             packed_executable,
             env,
             dependencies,
             self_dependency,
             clear_env,
         } = self;
+
+        let match_overrides = match_overrides
+            .into_iter()
+            .map(ScriptMatchOverrideTemplate::build)
+            .collect::<eyre::Result<_>>()?;
 
         let packed_executable = packed_executable.build(ctx)?;
         let env = env
@@ -306,11 +315,37 @@ impl ScriptConfigTemplate {
         }
 
         Ok(brioche_autopack::ScriptConfig {
+            match_overrides,
             packed_executable,
             base_path: Some(recipe_path.into()),
             env,
             dependencies: dependency_paths,
             clear_env,
+        })
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ScriptMatchOverrideTemplate {
+    pattern: String,
+    script_interpreter: String,
+}
+
+impl ScriptMatchOverrideTemplate {
+    fn build(self) -> eyre::Result<brioche_autopack::ScriptMatchOverride> {
+        let Self {
+            pattern,
+            script_interpreter,
+        } = self;
+
+        let pattern = globset::GlobBuilder::new(&pattern)
+            .build()?
+            .compile_matcher();
+
+        Ok(brioche_autopack::ScriptMatchOverride {
+            pattern,
+            script_interpreter,
         })
     }
 }

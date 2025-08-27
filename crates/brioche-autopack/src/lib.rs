@@ -123,6 +123,7 @@ pub struct SharedLibraryConfig {
 
 #[derive(Debug, Clone)]
 pub struct ScriptConfig {
+    pub match_overrides: Vec<ScriptMatchOverride>,
     pub packed_executable: PathBuf,
     pub base_path: Option<PathBuf>,
     pub env: HashMap<String, runnable_core::EnvValue>,
@@ -189,6 +190,12 @@ impl ScriptConfig {
             relative_runnable_path(dependency, self.base_path.as_deref(), output_path)
         })
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct ScriptMatchOverride {
+    pub pattern: globset::GlobMatcher,
+    pub script_interpreter: String,
 }
 
 fn relative_template(
@@ -691,36 +698,57 @@ fn autopack_script(
         return Ok(false);
     };
 
-    let script_file = std::fs::File::open(source_path)?;
-    let mut script_file = std::io::BufReader::new(script_file);
-    let mut shebang = [0; 2];
-    let Ok(()) = script_file.read_exact(&mut shebang) else {
-        return Ok(false);
+    let interpreter_override = script_config
+        .match_overrides
+        .iter()
+        .find_map(|match_override| {
+            if match_override.pattern.is_match(source_path) {
+                Some(&*match_override.script_interpreter)
+            } else {
+                None
+            }
+        });
+
+    let mut shebang_line;
+    let (interpreter, arg) = if let Some(interpeter) = interpreter_override {
+        // Found an override, use the explicitly-set interpreter
+        (interpeter, None)
+    } else {
+        // Parse the interpreter from the script's shebang (if it has one)
+
+        let script_file = std::fs::File::open(source_path)?;
+        let mut script_file = std::io::BufReader::new(script_file);
+        let mut shebang = [0; 2];
+        let Ok(()) = script_file.read_exact(&mut shebang) else {
+            return Ok(false);
+        };
+        if shebang != *b"#!" {
+            return Ok(false);
+        }
+
+        shebang_line = String::new();
+        script_file.read_line(&mut shebang_line)?;
+
+        let shebang_line = shebang_line.trim();
+        let shebang_parts = shebang_line.split_once(|c: char| c.is_ascii_whitespace());
+        let (interpreter_path, arg) = match shebang_parts {
+            Some((interpreter_path, arg)) => (interpreter_path.trim(), arg.trim()),
+            None => (shebang_line, ""),
+        };
+
+        let mut arg = Some(arg).filter(|arg| !arg.is_empty());
+        let mut interpreter = interpreter_path
+            .split(['/', '\\'])
+            .next_back()
+            .unwrap_or(interpreter_path);
+
+        if interpreter == "env" {
+            interpreter = arg.ok_or_eyre("expected argument for env script")?;
+            arg = None;
+        }
+
+        (interpreter, arg)
     };
-    if shebang != *b"#!" {
-        return Ok(false);
-    }
-
-    let mut shebang_line = String::new();
-    script_file.read_line(&mut shebang_line)?;
-
-    let shebang_line = shebang_line.trim();
-    let shebang_parts = shebang_line.split_once(|c: char| c.is_ascii_whitespace());
-    let (command_path, arg) = match shebang_parts {
-        Some((command_path, arg)) => (command_path.trim(), arg.trim()),
-        None => (shebang_line, ""),
-    };
-
-    let mut arg = Some(arg).filter(|arg| !arg.is_empty());
-    let mut command = command_path
-        .split(['/', '\\'])
-        .next_back()
-        .unwrap_or(command_path);
-
-    if command == "env" {
-        command = arg.ok_or_eyre("expected argument for env script")?;
-        arg = None;
-    }
 
     let script_resource = add_named_blob_from(ctx, source_path, None)?;
     let script_resource = Vec::<u8>::from_path_buf(script_resource)
@@ -762,7 +790,7 @@ fn autopack_script(
         .chain(dependency_resources)
         .collect();
 
-    let command = runnable_core::Template::from_literal(command.into());
+    let command = runnable_core::Template::from_literal(interpreter.into());
 
     let mut args = vec![];
     if let Some(arg) = arg {
