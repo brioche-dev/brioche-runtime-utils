@@ -104,11 +104,16 @@ fn find_resource_dirs_from_program(
     }
 }
 
-pub fn add_named_blob(
+/// Add a blob resource to a resource directory, named by a hash of the
+/// blob's contents.
+///
+/// If the blob doesn't already exist, it will be added as a resource with
+/// the path `blobs/{hash}` (plus a suffix based on its file permissions).
+/// Returns the resource path relative to `resource_dir`.
+pub fn add_blob(
     resource_dir: &Path,
     mut contents: impl std::io::BufRead,
     executable: bool,
-    name: &Path,
 ) -> Result<PathBuf, AddBlobError> {
     // Create the 'blobs' directory
     let blob_dir = resource_dir.join("blobs");
@@ -153,72 +158,45 @@ pub fn add_named_blob(
     drop(blob_file);
     std::fs::rename(&blob_temp_path, &blob_path)?;
 
-    // Create a temporary directory for the alias dir
-    let alias_temp_dir = resource_dir.join(format!("{blob_name}-{blob_temp_id}-alias"));
-    let alias_temp_path = alias_temp_dir.join(name);
-    std::fs::create_dir(&alias_temp_dir)?;
-
-    // Create the symlink within the temporary dir
-    let alias_parent_dir = resource_dir.join("aliases").join(name);
-    let alias_dir = alias_parent_dir.join(&blob_name);
-    let blob_pack_relative_path = pathdiff::diff_paths(&blob_path, &alias_dir)
-        .expect("blob path is not a prefix of alias path");
-    std::os::unix::fs::symlink(&blob_pack_relative_path, &alias_temp_path)?;
-
-    // Create directory for the alias dir
-    std::fs::create_dir_all(&alias_parent_dir)?;
-
-    // Rename the temp dir to the final alias path. This ensures that the alias
-    // dir itself is atomic, and never appears empty
-    let alias_path = alias_dir.join(name);
-    let result = std::fs::rename(&alias_temp_dir, alias_dir);
-    match result {
-        Ok(()) => {
-            // Alias dir created successfully
-        }
-        Err(err)
-            if err.kind() == std::io::ErrorKind::AlreadyExists
-                || err.kind() == std::io::ErrorKind::DirectoryNotEmpty =>
-        {
-            // Could not rename temp alias dir to final path. On Unix, this
-            // means that the alias dir already exists and is non-empty
-
-            // Clean up the temporary dir first
-            std::fs::remove_dir_all(&alias_temp_dir)?;
-
-            // Try to create the symlink again-- this time in its final path
-            let result = std::os::unix::fs::symlink(&blob_pack_relative_path, &alias_path);
-            match result {
-                Ok(()) => {
-                    // Symlink created successfully. This means the alias
-                    // dir already existed and was not empty, but contained
-                    // something else? This probably shouldn't happen...
-                }
-                Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
-                    // Path already exists, nothing to do
-                }
-                Err(err) => {
-                    return Err(err.into());
-                }
-            }
-        }
-        Err(err) => {
-            return Err(err.into());
-        }
-    }
-
-    // Return the symlink alias path relative to the resource dir
-    let alias_path = alias_path
+    // Return the path relative to the resource dir
+    let blob_path = blob_path
         .strip_prefix(resource_dir)
-        .expect("alias path is not in resource dir");
-    Ok(alias_path.to_owned())
+        .expect("blob path is not in resource dir");
+    Ok(blob_path.to_path_buf())
 }
 
-pub fn add_named_resource_directory(
+/// Add a blob resource to a resource directory, with a human-friendly
+/// alias symlink.
+///
+/// The blob will be added under `blobs/` if it doesn't already exist (see
+/// [`add_blob`]). Then, an alias symlink will be added under `aliases/{name}`.
+pub fn add_named_blob(
+    resource_dir: &Path,
+    contents: impl std::io::BufRead,
+    executable: bool,
+    name: &Path,
+) -> Result<PathBuf, AddBlobError> {
+    // Add the blob
+    let blob_path = add_blob(resource_dir, contents, executable)?;
+    let blob_path = resource_dir.join(blob_path);
+
+    // Add the alias
+    let alias_path = add_alias(resource_dir, &blob_path, name)?;
+
+    Ok(alias_path)
+}
+
+/// Add a directory into the resource directory, named by a hash of the
+/// directory's contents.
+///
+/// The contents of the directory will be hashed. If the directory doesn't
+/// already exist in the resource directory, it will be added with the
+/// path `directories/{hash}`. Returns the resource path relative to
+/// `resource_dir`.
+pub fn add_resource_directory(
     resource_dir: &Path,
     source: &Path,
-    hint_name: &str,
-) -> Result<PathBuf, AddNamedDirectoryError> {
+) -> Result<PathBuf, AddResourceDirectoryError> {
     let resources_directories_dir = resource_dir.join("directories");
     std::fs::create_dir_all(&resources_directories_dir)?;
 
@@ -228,21 +206,35 @@ pub fn add_named_resource_directory(
 
     let directory_hash = hash_directory(&temp_path)?;
     let directory_name = format!("{directory_hash}.d");
-    let hashed_path = resources_directories_dir.join(&directory_name);
-    std::fs::rename(&temp_path, &hashed_path)?;
+    let directory_path = resources_directories_dir.join(&directory_name);
+    std::fs::rename(&temp_path, &directory_path)?;
 
-    let alias_dir = resource_dir.join("aliases").join(hint_name);
-    std::fs::create_dir_all(&alias_dir)?;
-    let alias_path = alias_dir.join(&directory_name);
-
-    let hashed_relative_path = pathdiff::diff_paths(hashed_path, &alias_dir)
-        .expect("hashed path is not a prefix of alias path");
-    std::os::unix::fs::symlink(hashed_relative_path, &alias_path)?;
-
-    let alias_path = alias_path
+    // Return the path relative to the resource dir
+    let directory_path = directory_path
         .strip_prefix(resource_dir)
-        .expect("alias path not in resource dir");
-    Ok(alias_path.to_owned())
+        .expect("resource directory path is not in resource dir");
+    Ok(directory_path.to_path_buf())
+}
+
+/// Add a directory to a resource directory, with a human-friendly alias
+/// symlink.
+///
+/// The directory will be added under `directories/` if it doesn't already
+/// exist (see [`add_resource_directory`]). Then, an alias symlink will be
+/// added under `aliases/{name}`.
+pub fn add_named_resource_directory(
+    resource_dir: &Path,
+    source: &Path,
+    name: &Path,
+) -> Result<PathBuf, AddResourceDirectoryError> {
+    // Add the resource directory
+    let directory_path = add_resource_directory(resource_dir, source)?;
+    let directory_path = resource_dir.join(directory_path);
+
+    // Add the alias
+    let alias_path = add_alias(resource_dir, &directory_path, name)?;
+
+    Ok(alias_path)
 }
 
 fn hash_directory(path: &Path) -> Result<blake3::Hash, std::io::Error> {
@@ -282,6 +274,79 @@ fn hash_directory(path: &Path) -> Result<blake3::Hash, std::io::Error> {
     Ok(hash)
 }
 
+fn add_alias(
+    resource_dir: &Path,
+    target_path: &Path,
+    name: &Path,
+) -> Result<PathBuf, std::io::Error> {
+    let target_name = target_path
+        .file_name()
+        .expect("target_path has no filename component");
+
+    // Create a temporary directory for the alias dir
+    let alias_temp_id = ulid::Ulid::new();
+    let mut alias_temp_name = target_name.to_os_string();
+    alias_temp_name.push(format!("-{alias_temp_id}-alias"));
+    let alias_temp_dir = resource_dir.join(alias_temp_name);
+    let alias_temp_path = alias_temp_dir.join(name);
+    std::fs::create_dir(&alias_temp_dir)?;
+
+    // Create the symlink within the temporary dir
+    let alias_parent_dir = resource_dir.join("aliases").join(name);
+    let alias_dir = alias_parent_dir.join(target_name);
+    let blob_pack_relative_path = pathdiff::diff_paths(target_path, &alias_dir)
+        .expect("target path is not a prefix of alias path");
+    std::os::unix::fs::symlink(&blob_pack_relative_path, &alias_temp_path)?;
+
+    // Create directory for the alias dir
+    std::fs::create_dir_all(&alias_parent_dir)?;
+
+    // Rename the temp dir to the final alias path. This ensures that the alias
+    // dir itself is atomic, and never appears empty
+    let alias_path = alias_dir.join(name);
+    let result = std::fs::rename(&alias_temp_dir, alias_dir);
+    match result {
+        Ok(()) => {
+            // Alias dir created successfully
+        }
+        Err(err)
+            if err.kind() == std::io::ErrorKind::AlreadyExists
+                || err.kind() == std::io::ErrorKind::DirectoryNotEmpty =>
+        {
+            // Could not rename temp alias dir to final path. On Unix, this
+            // means that the alias dir already exists and is non-empty
+
+            // Clean up the temporary dir first
+            std::fs::remove_dir_all(&alias_temp_dir)?;
+
+            // Try to create the symlink again-- this time in its final path
+            let result = std::os::unix::fs::symlink(&blob_pack_relative_path, &alias_path);
+            match result {
+                Ok(()) => {
+                    // Symlink created successfully. This means the alias
+                    // dir already existed and was not empty, but contained
+                    // something else? This probably shouldn't happen...
+                }
+                Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+                    // Path already exists, nothing to do
+                }
+                Err(err) => {
+                    return Err(err);
+                }
+            }
+        }
+        Err(err) => {
+            return Err(err);
+        }
+    }
+
+    // Return the symlink alias path relative to the resource dir
+    let alias_path = alias_path
+        .strip_prefix(resource_dir)
+        .expect("alias path is not in resource dir");
+    Ok(alias_path.to_owned())
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum PackResourceDirError {
     #[error("brioche pack resource dir not found")]
@@ -299,7 +364,7 @@ pub enum AddBlobError {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum AddNamedDirectoryError {
+pub enum AddResourceDirectoryError {
     #[error(transparent)]
     IoError(#[from] std::io::Error),
 }

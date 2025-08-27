@@ -424,7 +424,7 @@ impl EnvValueTemplateValueComponent {
                         let resource = brioche_resources::add_named_resource_directory(
                             &ctx.resource_dir,
                             path,
-                            env_var,
+                            std::path::Path::new(&env_var),
                         )?;
                         let resource = <Vec<u8>>::from_path_buf(resource)
                             .map_err(|_| eyre::eyre!("invalid path"))?;
