@@ -256,6 +256,12 @@ pub struct ScriptConfigTemplate {
     env: HashMap<String, EnvValueTemplate>,
 
     #[serde(default)]
+    dependencies: Vec<TemplatePath>,
+
+    #[serde(default)]
+    self_dependency: bool,
+
+    #[serde(default)]
     clear_env: bool,
 }
 
@@ -268,6 +274,8 @@ impl ScriptConfigTemplate {
         let Self {
             packed_executable,
             env,
+            dependencies,
+            self_dependency,
             clear_env,
         } = self;
 
@@ -280,10 +288,28 @@ impl ScriptConfigTemplate {
             })
             .collect::<eyre::Result<_>>()?;
 
+        let mut dependency_paths = vec![];
+        if self_dependency {
+            dependency_paths.push(runnable_core::RunnablePath::RelativePath {
+                path: b".".to_vec(),
+            });
+        }
+        for dependency in dependencies {
+            let dependency_path = dependency.build(ctx)?;
+            let dependency_resource_path =
+                brioche_resources::add_resource_directory(&ctx.resource_dir, &dependency_path)?;
+            let dependency_resource_path = Vec::from_path_buf(dependency_resource_path)
+                .map_err(|_| eyre::eyre!("invalid path"))?;
+            dependency_paths.push(runnable_core::RunnablePath::Resource {
+                resource: dependency_resource_path,
+            });
+        }
+
         Ok(brioche_autopack::ScriptConfig {
             packed_executable,
             base_path: Some(recipe_path.into()),
             env,
+            dependencies: dependency_paths,
             clear_env,
         })
     }

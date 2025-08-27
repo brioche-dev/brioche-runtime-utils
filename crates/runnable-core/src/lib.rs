@@ -119,9 +119,15 @@ impl Template {
         }
     }
 
-    pub fn from_resource_path(resource_path: PathBuf) -> Result<Self, RunnableTemplateError> {
-        let resource = Vec::<u8>::from_path_buf(resource_path)
-            .map_err(|_| RunnableTemplateError::PathError)?;
+    pub fn from_resource_path(resource: PathBuf) -> Result<Self, RunnableTemplateError> {
+        let resource =
+            Vec::<u8>::from_path_buf(resource).map_err(|_| RunnableTemplateError::PathError)?;
+        Ok(Self {
+            components: vec![TemplateComponent::Resource { resource }],
+        })
+    }
+
+    pub fn from_resource_path_bytes(resource: Vec<u8>) -> Result<Self, RunnableTemplateError> {
         Ok(Self {
             components: vec![TemplateComponent::Resource { resource }],
         })

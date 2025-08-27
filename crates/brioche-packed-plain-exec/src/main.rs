@@ -284,6 +284,17 @@ fn run() -> Result<(), PackedError> {
                             }
                         }
                     }
+
+                    // If the dependency has a bin directory, append it to
+                    // `$PATH` automatically
+                    let bin_dir = dependency_path.join("bin");
+                    if bin_dir.is_dir() {
+                        envs.append(
+                            "PATH".to_string(),
+                            bin_dir.into_os_string(),
+                            PATH_SEPARATOR.as_ref(),
+                        );
+                    }
                 }
 
                 // Finally, apply the explicitly-set env vars

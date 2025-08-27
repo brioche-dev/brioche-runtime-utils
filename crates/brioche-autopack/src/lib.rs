@@ -126,6 +126,7 @@ pub struct ScriptConfig {
     pub packed_executable: PathBuf,
     pub base_path: Option<PathBuf>,
     pub env: HashMap<String, runnable_core::EnvValue>,
+    pub dependencies: Vec<runnable_core::RunnablePath>,
     pub clear_env: bool,
 }
 
@@ -170,6 +171,22 @@ impl ScriptConfig {
                 }
             };
             eyre::Ok((key.clone(), env_value))
+        })
+    }
+
+    /// Returns an iterator of dependencies for autopacked scripts.
+    /// Relative paths in the env vars will be adjusted for `output_path`,
+    /// so that the paths stay relative to `base_path`.
+    ///
+    /// For example, if `base_path` is `/output` and `output_path` is
+    /// `/output/bin/hello`, then relative paths will be prepended with
+    /// a `../` so that they stay relative to `/output`.
+    pub fn dependencies_for_output_path<'a>(
+        &'a self,
+        output_path: &'a Path,
+    ) -> impl Iterator<Item = eyre::Result<runnable_core::RunnablePath>> + 'a {
+        self.dependencies.iter().map(|dependency| {
+            relative_runnable_path(dependency, self.base_path.as_deref(), output_path)
         })
     }
 }
@@ -219,6 +236,44 @@ fn relative_template(
         })
         .collect::<eyre::Result<Vec<_>>>()?;
     Ok(runnable_core::Template { components })
+}
+
+fn relative_runnable_path(
+    value: &runnable_core::RunnablePath,
+    base_path: Option<&Path>,
+    output_path: &Path,
+) -> eyre::Result<runnable_core::RunnablePath> {
+    let Some(base_path) = base_path else {
+        return Ok(value.clone());
+    };
+    let output_path = base_path.join(output_path);
+    let output_dir = output_path
+        .parent()
+        .ok_or_else(|| eyre::eyre!("failed to get parent of output path"))?;
+
+    match value {
+        runnable_core::RunnablePath::Resource { .. } => eyre::Ok(value.clone()),
+        runnable_core::RunnablePath::RelativePath { path } => {
+            // TODO: Handle path resolution in a cross-platform way.
+            // This could change based on the host platform
+
+            let path = path
+                .to_path()
+                .with_context(|| format!("failed to parse path {path:?}"))?;
+
+            let full_path = base_path.join(path);
+            let new_relative_path = pathdiff::diff_paths(full_path, output_dir)
+                .context("failed to get path relative to output dir")?;
+            let new_relative_path =
+                <Vec<u8>>::from_path_buf(new_relative_path).map_err(|new_relative_path| {
+                    eyre::eyre!("failed to convert path {new_relative_path:?}")
+                })?;
+
+            eyre::Ok(runnable_core::RunnablePath::RelativePath {
+                path: new_relative_path,
+            })
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -296,12 +351,10 @@ pub fn autopack(config: &AutopackConfig) -> eyre::Result<()> {
 struct AutopackContext<'a> {
     config: &'a AutopackConfig,
     link_dependency_library_paths: Vec<PathBuf>,
-    link_dependency_paths: Vec<PathBuf>,
 }
 
 fn autopack_context(config: &AutopackConfig) -> eyre::Result<AutopackContext<'_>> {
     let mut link_dependency_library_paths = vec![];
-    let mut link_dependency_paths = vec![];
     for link_dep in &config.link_dependencies {
         // Add $LIBRARY_PATH directories from symlinks under
         // brioche-env.d/env/LIBRARY_PATH
@@ -338,47 +391,9 @@ fn autopack_context(config: &AutopackConfig) -> eyre::Result<AutopackContext<'_>
         }
     }
 
-    for link_dep in &config.link_dependencies {
-        // Add $PATH directories from symlinks under brioche-env.d/env/PATH
-        let path_env_dir = link_dep.join("brioche-env.d").join("env").join("PATH");
-        let path_env_dir_entries = match std::fs::read_dir(&path_env_dir) {
-            Ok(entries) => entries,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-                continue;
-            }
-            Err(error) => {
-                return Err(error).with_context(|| {
-                    format!("failed to read directory {}", path_env_dir.display())
-                });
-            }
-        };
-        for entry in path_env_dir_entries {
-            let entry = entry?;
-            eyre::ensure!(
-                entry.file_type()?.is_symlink(),
-                "expected {:?} to be a symlink",
-                entry.path()
-            );
-
-            let entry_path = entry.path().canonicalize().with_context(|| {
-                format!("failed to canonicalize path {}", entry.path().display())
-            })?;
-            link_dependency_paths.push(entry_path);
-        }
-    }
-
-    for link_dep in &config.link_dependencies {
-        // Add bin/ to $PATH if it exists
-        let link_dep_bin = link_dep.join("bin");
-        if link_dep_bin.is_dir() {
-            link_dependency_paths.push(link_dep_bin);
-        }
-    }
-
     Ok(AutopackContext {
         config,
         link_dependency_library_paths,
-        link_dependency_paths,
     })
 }
 
@@ -421,7 +436,7 @@ fn try_autopack_path(
         AutopackKind::SharedLibrary => {
             autopack_shared_library(ctx, source_path, output_path, pending_paths)
         }
-        AutopackKind::Script => autopack_script(ctx, source_path, output_path, pending_paths),
+        AutopackKind::Script => autopack_script(ctx, source_path, output_path),
         AutopackKind::Repack => autopack_repack(ctx, source_path, output_path, pending_paths),
     }
 }
@@ -671,7 +686,6 @@ fn autopack_script(
     ctx: &AutopackContext,
     source_path: &Path,
     output_path: &Path,
-    pending_paths: &mut BTreeMap<PathBuf, AutopackPathConfig>,
 ) -> eyre::Result<bool> {
     let Some(script_config) = &ctx.config.script else {
         return Ok(false);
@@ -698,32 +712,21 @@ fn autopack_script(
     };
 
     let mut arg = Some(arg).filter(|arg| !arg.is_empty());
-    let mut command_name = command_path
+    let mut command = command_path
         .split(['/', '\\'])
         .next_back()
         .unwrap_or(command_path);
 
-    if command_name == "env" {
-        command_name = arg.ok_or_eyre("expected argument for env script")?;
+    if command == "env" {
+        command = arg.ok_or_eyre("expected argument for env script")?;
         arg = None;
     }
-    let mut command = None;
-    for link_dependency_path in &ctx.link_dependency_paths {
-        if link_dependency_path.join(command_name).is_file() {
-            command = Some(link_dependency_path.join(command_name));
-            break;
-        }
-    }
 
-    let command = command.ok_or_else(|| eyre::eyre!("could not find command {command_name:?}"))?;
-
-    // Autopack the command if it's pending
-    try_autopack_dependency(ctx, &command, pending_paths)?;
-
-    let command_resource = add_named_blob_from(ctx, &command, None)?;
     let script_resource = add_named_blob_from(ctx, source_path, None)?;
+    let script_resource = Vec::<u8>::from_path_buf(script_resource)
+        .map_err(|_| eyre::eyre!("invalid resource path"))?;
 
-    let env_resource_paths = script_config
+    let env_resources = script_config
         .env
         .values()
         .filter_map(|value| match value {
@@ -743,27 +746,23 @@ fn autopack_script(
         .filter_map(|component| match component {
             runnable_core::TemplateComponent::Literal { .. }
             | runnable_core::TemplateComponent::RelativePath { .. } => None,
-            runnable_core::TemplateComponent::Resource { resource } => Some(
-                resource
-                    .to_path()
-                    .map_err(|_| eyre::eyre!("invalid resource path")),
-            ),
-        })
-        .collect::<eyre::Result<Vec<_>>>()?;
+            runnable_core::TemplateComponent::Resource { resource } => Some(resource.clone()),
+        });
+    let dependency_resources =
+        script_config
+            .dependencies
+            .iter()
+            .filter_map(|dependency| match dependency {
+                runnable_core::RunnablePath::RelativePath { .. } => None,
+                runnable_core::RunnablePath::Resource { resource } => Some(resource.clone()),
+            });
 
-    let resource_paths = [command_resource.clone(), script_resource.clone()]
-        .into_iter()
-        .chain(
-            env_resource_paths
-                .into_iter()
-                .map(std::borrow::ToOwned::to_owned),
-        )
-        .map(|path| {
-            Vec::<u8>::from_path_buf(path).map_err(|_| eyre::eyre!("invalid resource path"))
-        })
-        .collect::<eyre::Result<Vec<_>>>()?;
+    let resource_paths = std::iter::once(script_resource.clone())
+        .chain(env_resources)
+        .chain(dependency_resources)
+        .collect();
 
-    let command = runnable_core::Template::from_resource_path(command_resource)?;
+    let command = runnable_core::Template::from_literal(command.into());
 
     let mut args = vec![];
     if let Some(arg) = arg {
@@ -772,22 +771,27 @@ fn autopack_script(
         });
     }
     args.push(runnable_core::ArgValue::Arg {
-        value: runnable_core::Template::from_resource_path(script_resource.clone())?,
+        value: runnable_core::Template::from_resource_path_bytes(script_resource.clone())?,
     });
     args.push(runnable_core::ArgValue::Rest);
 
     let env = script_config
         .env_for_output_path(output_path)
         .collect::<eyre::Result<_>>()?;
+    let dependencies = script_config
+        .dependencies_for_output_path(output_path)
+        .collect::<eyre::Result<_>>()?;
 
     let runnable_pack = runnable_core::Runnable {
         command,
         args,
         env,
-        dependencies: vec![],
+        dependencies,
         clear_env: script_config.clear_env,
         source: Some(runnable_core::RunnableSource {
-            path: runnable_core::RunnablePath::from_resource_path(script_resource)?,
+            path: runnable_core::RunnablePath::Resource {
+                resource: script_resource,
+            },
         }),
     };
     let pack = brioche_pack::Pack::Metadata {
