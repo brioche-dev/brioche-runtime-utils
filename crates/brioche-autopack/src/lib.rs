@@ -474,7 +474,10 @@ fn try_autopack_path(
     output_path: &Path,
     pending_paths: &mut BTreeMap<PathBuf, AutopackPathConfig>,
 ) -> eyre::Result<bool> {
-    let Some(kind) = autopack_kind(source_path)? else {
+    let kind = autopack_kind(source_path)?;
+    log::info!("autopack kind is {kind:?} for {}", source_path.display());
+
+    let Some(kind) = kind else {
         return Ok(false);
     };
 
@@ -503,9 +506,33 @@ fn autopack_kind(path: &Path) -> eyre::Result<Option<AutopackKind>> {
     } else {
         let program_object = goblin::Object::parse(&contents);
 
-        let Ok(goblin::Object::Elf(program_object)) = program_object else {
-            return Ok(None);
+        let program_object = match program_object {
+            Ok(goblin::Object::Elf(program_object)) => {
+                log::debug!("parsed {} with goblin, got an ELF object", path.display());
+                log::trace!("ELF object: {program_object:?}");
+
+                program_object
+            }
+            Ok(_) => {
+                log::debug!(
+                    "parsed {} with goblin, got unsupported object",
+                    path.display()
+                );
+                log::trace!("unsupported object: {program_object:?}");
+
+                return Ok(None);
+            }
+            Err(error) => {
+                log::debug!(
+                    "tried parsing {} with goblin, returned error: {error:#}",
+                    path.display()
+                );
+                return Ok(None);
+            }
         };
+
+        log::debug!("interpreter: {:?}", program_object.interpreter);
+        log::debug!("is_lib? {}", program_object.is_lib);
 
         if program_object.interpreter.is_some() {
             Ok(Some(AutopackKind::DynamicBinary))
@@ -572,6 +599,11 @@ fn autopack_dynamic_binary(
         eyre::eyre!("could not find interpreter for dynamic binary: {source_path:?}")
     })?;
 
+    log::debug!(
+        "resolved interpreter {interpreter} to {}",
+        interpreter_path.display()
+    );
+
     // Autopack the interpreter if it's pending
     try_autopack_dependency(ctx, &interpreter_path, pending_paths)?;
 
@@ -602,6 +634,11 @@ fn autopack_dynamic_binary(
         )
         .map(std::string::ToString::to_string)
         .collect();
+
+    log::debug!("needed libraries: {}", needed_libraries.len());
+    for needed_library in &needed_libraries {
+        log::debug!("- {needed_library}");
+    }
 
     let library_dir_resource_paths = collect_all_library_dirs(
         ctx,
@@ -656,6 +693,8 @@ fn autopack_dynamic_binary(
     brioche_pack::inject_pack(output, &pack)
         .with_context(|| format!("failed to inject pack into {}", output_path.display()))?;
 
+    log::info!("autopacked dynamic binary: {}", output_path.display());
+
     Ok(true)
 }
 
@@ -699,6 +738,11 @@ fn autopack_shared_library(
         .map(std::string::ToString::to_string)
         .collect();
 
+    log::debug!("needed libraries: {}", needed_libraries.len());
+    for needed_library in &needed_libraries {
+        log::debug!("- {needed_library}");
+    }
+
     let library_dir_resource_paths = collect_all_library_dirs(
         ctx,
         &shared_library_config.dynamic_linking,
@@ -716,10 +760,15 @@ fn autopack_shared_library(
     let pack = brioche_pack::Pack::Static { library_dirs };
 
     if !pack.should_add_to_executable() && !shared_library_config.allow_empty {
+        log::warn!("pack is empty, which is not allowed by shared library config");
         return Ok(false);
     }
 
     let file = if source_path == output_path {
+        log::debug!(
+            "source path {} is the same as the output path, appending pack",
+            source_path.display()
+        );
         std::fs::OpenOptions::new().append(true).open(output_path)?
     } else {
         let mut new_file = std::fs::File::create(output_path)?;
@@ -753,9 +802,13 @@ fn autopack_script(
         });
 
     let mut shebang_line;
-    let (interpreter, arg) = if let Some(interpeter) = interpreter_override {
+    let (interpreter, arg) = if let Some(interpreter) = interpreter_override {
         // Found an override, use the explicitly-set interpreter
-        (interpeter, None)
+        log::info!(
+            "using interpreter override {interpreter} for {}",
+            source_path.display()
+        );
+        (interpreter, None)
     } else {
         // Parse the interpreter from the script's shebang (if it has one)
 
@@ -771,6 +824,11 @@ fn autopack_script(
 
         shebang_line = String::new();
         script_file.read_line(&mut shebang_line)?;
+
+        log::debug!(
+            "shebang line from {}: {shebang_line:?}",
+            source_path.display()
+        );
 
         let shebang_line = shebang_line.trim();
         let shebang_parts = shebang_line.split_once(|c: char| c.is_ascii_whitespace());
@@ -788,6 +846,8 @@ fn autopack_script(
         if interpreter == "env" {
             interpreter = arg.ok_or_eyre("expected argument for env script")?;
             arg = None;
+
+            log::debug!("found env shebang with real interpreter {interpreter:?}");
         }
 
         (interpreter, arg)
@@ -916,6 +976,12 @@ fn autopack_repack(
     let repack_source = pack_source(source_path, &extracted.pack, &ctx.config.all_resource_dirs)
         .with_context(|| format!("failed to repack {}", source_path.display()))?;
 
+    log::info!(
+        "repacking with source: {repack_source:?}: {} -> {}",
+        source_path.display(),
+        output_path.display(),
+    );
+
     let unpacked_source_path;
     let unpacked_output_path;
     match repack_source {
@@ -966,6 +1032,7 @@ fn collect_all_library_dirs(
     while let Some(library_name) = needed_libraries.pop_front() {
         // If we've already found this library, then skip it
         if found_libraries.contains(&library_name) {
+            log::debug!("already found library: {library_name}");
             continue;
         }
 
@@ -973,8 +1040,11 @@ fn collect_all_library_dirs(
         let library_path = find_library(&library_search_paths, &library_name)?;
         let Some(library_path) = library_path else {
             if dynamic_linking_config.skip_unknown_libraries {
+                log::info!("skipping unknown library: {library_name}");
                 continue;
             }
+
+            log::warn!("did not find library: {library_name}");
 
             eyre::bail!("library not found: {library_name:?}");
         };
@@ -1018,23 +1088,48 @@ fn collect_all_library_dirs(
         }
 
         // Try to get the dynamic dependencies from the library itself
-        let Ok(library_file) = std::fs::read(&library_path) else {
-            continue;
+        let library_file = match std::fs::read(&library_path) {
+            Ok(library_file) => library_file,
+            Err(error) => {
+                log::warn!(
+                    "failed to read library {} (skipping deps): {error:#}",
+                    library_path.display()
+                );
+                continue;
+            }
         };
-        let Ok(library_object) = goblin::Object::parse(&library_file) else {
-            continue;
+        let library_object = match goblin::Object::parse(&library_file) {
+            Ok(library_object) => library_object,
+            Err(error) => {
+                log::warn!(
+                    "failed to parse library {} (skipping deps): {error:#}",
+                    library_path.display()
+                );
+                continue;
+            }
         };
 
         // TODO: Support other object files
         let goblin::Object::Elf(library_elf) = library_object else {
+            log::warn!(
+                "library {} is not an ELF (skipping deps)",
+                library_path.display()
+            );
             continue;
         };
+
+        for dep_library in &library_elf.libraries {
+            log::info!("library {library_name} needs {dep_library}");
+        }
+
         needed_libraries.extend(library_elf.libraries.iter().map(|lib| (*lib).to_string()));
 
         // If the library has a Brioche pack, then use the included resources
         // for additional search directories
         let library_file_cursor = std::io::Cursor::new(&library_file[..]);
         if let Ok(extracted_library) = brioche_pack::extract_pack(library_file_cursor) {
+            log::debug!("found pack from library {}", library_path.display());
+
             let library_dirs = match &extracted_library.pack {
                 brioche_pack::Pack::Static { library_dirs }
                 | brioche_pack::Pack::LdLinux { library_dirs, .. } => &library_dirs[..],
@@ -1043,15 +1138,28 @@ fn collect_all_library_dirs(
 
             for library_dir in library_dirs {
                 let Ok(library_dir) = library_dir.to_path() else {
+                    log::warn!(
+                        "could not parse library dir from {}, skipping",
+                        library_path.display()
+                    );
                     continue;
                 };
                 let Some(library_dir_path) = brioche_resources::find_in_resource_dirs(
                     &ctx.config.all_resource_dirs,
                     library_dir,
                 ) else {
+                    log::warn!(
+                        "did not find resource library dir {} from library {}",
+                        library_dir.display(),
+                        library_path.display()
+                    );
                     continue;
                 };
 
+                log::debug!(
+                    "got extra search path from library {library_name} in pack: {}",
+                    library_dir_path.display()
+                );
                 library_search_paths.push(library_dir_path);
             }
         }
@@ -1073,6 +1181,10 @@ fn find_library(
             // matching the library name
             let lib_path = path.join(library_name);
             if lib_path.is_file() {
+                log::info!(
+                    "found library in search dir: {library_name} -> {}",
+                    lib_path.display()
+                );
                 return Ok(Some(lib_path));
             }
         } else if path.is_file() {
@@ -1082,6 +1194,10 @@ fn find_library(
                 .file_name()
                 .ok_or_eyre("failed to get filename from path")?;
             if path_filename.to_str() == Some(library_name) {
+                log::info!(
+                    "found library (directly in search path): {library_name} -> {}",
+                    path.display()
+                );
                 return Ok(Some(path.to_owned()));
             }
 
@@ -1102,7 +1218,17 @@ fn find_library(
             continue;
         };
 
+        log::trace!(
+            "checking if {library_name} matches soname from {} (soname={:?})",
+            path.display(),
+            elf.soname
+        );
+
         if elf.soname == Some(library_name) {
+            log::info!(
+                "found library by soname: {library_name} -> {}",
+                path.display()
+            );
             return Ok(Some(path.to_owned()));
         }
     }
@@ -1148,6 +1274,8 @@ fn try_autopack_dependency(
     path: &Path,
     pending_paths: &mut BTreeMap<PathBuf, AutopackPathConfig>,
 ) -> eyre::Result<()> {
+    log::trace!("trying to autopack dependency {}", path.display());
+
     // Get the canonical path of the dependency
     let canonical_path = path
         .canonicalize()
@@ -1155,6 +1283,8 @@ fn try_autopack_dependency(
 
     // If the path is pending, then autopack it
     if let Some(path_config) = pending_paths.remove(&canonical_path) {
+        log::debug!("path is pending, autopacking: {}", canonical_path.display());
+
         autopack_path(ctx, path, &path_config, pending_paths)?;
     }
 
@@ -1177,6 +1307,12 @@ fn find_script_interpreter(
 
         let interpreter_subpath = Path::new("bin").join(interpreter);
         let dependency_interpreter_path = dependency_path.join(&interpreter_subpath);
+
+        log::trace!(
+            "checking for interpreter {interpreter} in dependency: {}",
+            dependency_interpreter_path.display()
+        );
+
         let Ok(metadata) = std::fs::metadata(&dependency_interpreter_path) else {
             continue;
         };
@@ -1185,6 +1321,11 @@ fn find_script_interpreter(
         let mode = permissions.mode();
         let is_executable = mode & 0o111 != 0;
         if metadata.is_file() && is_executable {
+            log::info!(
+                "found interpreter {interpreter} in dependency: {}",
+                interpreter_subpath.display()
+            );
+
             let interpreter_subpath =
                 Vec::from_path_buf(interpreter_subpath).map_err(|interpreter_subpath| {
                     eyre::eyre!("failed to convert path {interpreter_subpath:?}")
@@ -1202,8 +1343,19 @@ fn find_script_interpreter(
 
     let mut interpreter_path = None;
     for link_dependency_path in &ctx.link_dependency_paths {
-        let link_dependency_path = link_dependency_path.join(interpreter);
+        let link_dependency_interpreter_path = link_dependency_path.join(interpreter);
+
+        log::trace!(
+            "checking for interpreter {interpreter} in link dependency: {}",
+            link_dependency_interpreter_path.display()
+        );
+
         if link_dependency_path.is_file() {
+            log::info!(
+                "found interpreter {interpreter} in link dependency: {}",
+                link_dependency_path.display()
+            );
+
             interpreter_path = Some(link_dependency_path);
             break;
         }
@@ -1213,10 +1365,10 @@ fn find_script_interpreter(
         .ok_or_else(|| eyre::eyre!("could not find script interpreter {interpreter:?}"))?;
 
     // Autopack the interpreter if it's pending
-    try_autopack_dependency(ctx, &interpreter_path, pending_paths)?;
+    try_autopack_dependency(ctx, interpreter_path, pending_paths)?;
 
-    let interpreter_resource_path = add_named_blob_from(ctx, &interpreter_path, None)
-        .with_context(|| {
+    let interpreter_resource_path =
+        add_named_blob_from(ctx, interpreter_path, None).with_context(|| {
             format!(
                 "failed to add resource for interpreter {}",
                 interpreter_path.display()

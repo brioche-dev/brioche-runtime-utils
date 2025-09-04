@@ -13,6 +13,7 @@ use eyre::{Context as _, OptionExt as _};
 /// a simple measure we use to avoid reading cyclic `@file` references forever.
 const MAX_FILE_DEREFERENCES: u32 = 5000;
 
+#[derive(Debug)]
 enum Mode {
     AutopackEnabled {
         output_path: PathBuf,
@@ -23,6 +24,8 @@ enum Mode {
 }
 
 fn main() -> ExitCode {
+    log::debug!("starting brioche-ld");
+
     let result = run();
 
     match result {
@@ -56,6 +59,9 @@ fn run() -> eyre::Result<ExitCode> {
     let linker = ld_resource_dir.join(current_exe_name);
     let packed_path = ld_resource_dir.join("brioche-packed");
 
+    log::info!("using linker: {}", linker.display());
+    log::debug!("using packed path: {}", packed_path.display());
+
     let mut output_path = Some(PathBuf::from("a.out"));
     let mut library_search_paths = vec![];
     let mut input_paths = vec![];
@@ -66,6 +72,8 @@ fn run() -> eyre::Result<ExitCode> {
     while let Some(arg) = args.pop_front() {
         let arg = <[u8]>::from_os_str(&arg).ok_or_eyre("invalid arg")?;
         let arg = bstr::BStr::new(arg);
+
+        log::trace!("arg: {arg:?}");
 
         if &**arg == b"-o" {
             let output = args.pop_front().ok_or_eyre("invalid arg")?;
@@ -87,6 +95,8 @@ fn run() -> eyre::Result<ExitCode> {
         } else if arg.starts_with(b"-") {
             // Ignore other arguments
         } else if let Some(arg_file_path) = arg.strip_prefix(b"@") {
+            log::trace!("dereferencing arg: {:?}", bstr::BStr::new(arg_file_path));
+
             let arg_file_path = arg_file_path
                 .to_path()
                 .map_err(|_| eyre::eyre!("invalid path"))?;
@@ -127,6 +137,14 @@ fn run() -> eyre::Result<ExitCode> {
         }
     }
 
+    log::trace!("output path: {output_path:?}");
+    for input_path in &input_paths {
+        log::trace!("input path: {}", input_path.display());
+    }
+    for library_search_path in &library_search_paths {
+        log::trace!("library search path: {}", library_search_path.display());
+    }
+
     // `ld` can take dynamic libraries directly as inputs, so check all the
     // input paths when searching for required libraries
     library_search_paths.extend(input_paths);
@@ -154,9 +172,14 @@ fn run() -> eyre::Result<ExitCode> {
         Ok("true")
     );
 
+    log::debug!("autopack_mode: {autopack_mode:?}");
+    log::debug!("skip unknown libs: {skip_unknown_libs}");
+
     let mut command = std::process::Command::new(&linker);
     command.args(std::env::args_os().skip(1));
     let status = command.status()?;
+
+    log::info!("linker returned {status:?}");
 
     if !status.success() {
         let exit_code = status
@@ -172,6 +195,8 @@ fn run() -> eyre::Result<ExitCode> {
             resource_dir,
             all_resource_dirs,
         } => {
+            log::info!("autopacking: {}", output_path.display());
+
             let dynamic_linking_config = brioche_autopack::DynamicLinkingConfig {
                 library_paths: library_search_paths,
                 skip_libraries: HashSet::new(),
@@ -198,6 +223,7 @@ fn run() -> eyre::Result<ExitCode> {
             })?;
         }
         Mode::AutopackDisabled => {
+            log::info!("autopacking disabled");
             // We already wrote the binary, so nothing to do
         }
     }

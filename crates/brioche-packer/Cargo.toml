@@ -11,6 +11,7 @@ brioche-resources = { path = "../brioche-resources" }
 bstr = "1.9.1"
 clap = { version = "4.5.45", features = ["derive"] }
 color-eyre = "0.6.5"
+env_logger = "0.11.8"
 eyre = "0.6.12"
 globset = "0.4.16"
 goblin = "0.10.1"

@@ -71,6 +71,7 @@ fn main() -> ExitCode {
 }
 
 fn run() -> eyre::Result<()> {
+    env_logger::init();
     color_eyre::install()?;
     let args = Args::parse();
 
