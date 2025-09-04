@@ -358,11 +358,51 @@ pub fn autopack(config: &AutopackConfig) -> eyre::Result<()> {
 
 struct AutopackContext<'a> {
     config: &'a AutopackConfig,
+    link_dependency_paths: Vec<PathBuf>,
     link_dependency_library_paths: Vec<PathBuf>,
 }
 
 fn autopack_context(config: &AutopackConfig) -> eyre::Result<AutopackContext<'_>> {
+    let mut link_dependency_paths = vec![];
     let mut link_dependency_library_paths = vec![];
+
+    for link_dep in &config.link_dependencies {
+        // Add $PATH directories from symlinks under brioche-env.d/env/PATH
+        let path_env_dir = link_dep.join("brioche-env.d").join("env").join("PATH");
+        let path_env_dir_entries = match std::fs::read_dir(&path_env_dir) {
+            Ok(entries) => entries,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                continue;
+            }
+            Err(error) => {
+                return Err(error).with_context(|| {
+                    format!("failed to read directory {}", path_env_dir.display())
+                });
+            }
+        };
+        for entry in path_env_dir_entries {
+            let entry = entry?;
+            eyre::ensure!(
+                entry.file_type()?.is_symlink(),
+                "expected {:?} to be a symlink",
+                entry.path()
+            );
+
+            let entry_path = entry.path().canonicalize().with_context(|| {
+                format!("failed to canonicalize path {}", entry.path().display())
+            })?;
+            link_dependency_paths.push(entry_path);
+        }
+    }
+
+    for link_dep in &config.link_dependencies {
+        // Add bin/ to $PATH if it exists
+        let link_dep_bin = link_dep.join("bin");
+        if link_dep_bin.is_dir() {
+            link_dependency_paths.push(link_dep_bin);
+        }
+    }
+
     for link_dep in &config.link_dependencies {
         // Add $LIBRARY_PATH directories from symlinks under
         // brioche-env.d/env/LIBRARY_PATH
@@ -401,6 +441,7 @@ fn autopack_context(config: &AutopackConfig) -> eyre::Result<AutopackContext<'_>
 
     Ok(AutopackContext {
         config,
+        link_dependency_paths,
         link_dependency_library_paths,
     })
 }
@@ -444,7 +485,7 @@ fn try_autopack_path(
         AutopackKind::SharedLibrary => {
             autopack_shared_library(ctx, source_path, output_path, pending_paths)
         }
-        AutopackKind::Script => autopack_script(ctx, source_path, output_path),
+        AutopackKind::Script => autopack_script(ctx, source_path, output_path, pending_paths),
         AutopackKind::Repack => autopack_repack(ctx, source_path, output_path, pending_paths),
     }
 }
@@ -694,6 +735,7 @@ fn autopack_script(
     ctx: &AutopackContext,
     source_path: &Path,
     output_path: &Path,
+    pending_paths: &mut BTreeMap<PathBuf, AutopackPathConfig>,
 ) -> eyre::Result<bool> {
     let Some(script_config) = &ctx.config.script else {
         return Ok(false);
@@ -810,10 +852,12 @@ fn autopack_script(
         .collect::<eyre::Result<Vec<_>>>()?;
 
     let interpreter = find_script_interpreter(
+        ctx,
         interpreter,
         &dependencies,
         output_path,
         &ctx.config.resource_dir,
+        pending_paths,
     )?;
 
     let runnable_pack = runnable_core::Runnable {
@@ -1118,11 +1162,14 @@ fn try_autopack_dependency(
 }
 
 fn find_script_interpreter(
+    ctx: &AutopackContext,
     interpreter: &str,
     dependencies: &[runnable_core::RunnablePath],
     output_path: &Path,
     resource_dir: &PathBuf,
+    pending_paths: &mut BTreeMap<PathBuf, AutopackPathConfig>,
 ) -> eyre::Result<runnable_core::Template> {
+    // Try to find the interpreter among the runtime dependencies first
     for dependency in dependencies {
         let dependency_path = dependency
             .to_path(output_path, std::slice::from_ref(resource_dir))
@@ -1149,5 +1196,33 @@ fn find_script_interpreter(
         }
     }
 
-    eyre::bail!("script interpreter {interpreter:?} not found in any dependency");
+    // Next, search for the interpreter among the link dependencies. If
+    // we find it here, we'll also need to make sure the interpreter is
+    // autopacked if needed.
+
+    let mut interpreter_path = None;
+    for link_dependency_path in &ctx.link_dependency_paths {
+        let link_dependency_path = link_dependency_path.join(interpreter);
+        if link_dependency_path.is_file() {
+            interpreter_path = Some(link_dependency_path);
+            break;
+        }
+    }
+
+    let interpreter_path = interpreter_path
+        .ok_or_else(|| eyre::eyre!("could not find script interpreter {interpreter:?}"))?;
+
+    // Autopack the interpreter if it's pending
+    try_autopack_dependency(ctx, &interpreter_path, pending_paths)?;
+
+    let interpreter_resource_path = add_named_blob_from(ctx, &interpreter_path, None)
+        .with_context(|| {
+            format!(
+                "failed to add resource for interpreter {}",
+                interpreter_path.display()
+            )
+        })?;
+    let interpreter_resource_path =
+        runnable_core::Template::from_resource_path(interpreter_resource_path)?;
+    Ok(interpreter_resource_path)
 }
