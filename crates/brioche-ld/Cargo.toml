@@ -12,6 +12,7 @@ bstr = "1.8.0"
 chumsky = "0.10.1"
 env_logger = "0.11.8"
 eyre = "0.6.12"
+globset = "0.4.16"
 log = "0.4.28"
 thiserror = "2.0.16"
 

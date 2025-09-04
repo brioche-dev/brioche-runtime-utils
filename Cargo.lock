@@ -211,6 +211,7 @@ dependencies = [
  "chumsky",
  "env_logger",
  "eyre",
+ "globset",
  "log",
  "thiserror",
 ]

@@ -149,28 +149,75 @@ fn run() -> eyre::Result<ExitCode> {
     // input paths when searching for required libraries
     library_search_paths.extend(input_paths);
 
-    // Determine whether we will pack the resulting binary or not. We do this
-    // before running the command so we can bail early if the resource dir
-    // cannot be found.
     let autopack_mode = std::env::var("BRIOCHE_LD_AUTOPACK");
-    let autopack_mode = match (autopack_mode.as_deref(), output_path) {
-        (Ok("false"), _) | (_, None) => Mode::AutopackDisabled,
-        (_, Some(output_path)) => {
-            let resource_dir = brioche_resources::find_output_resource_dir(&output_path)
-                .context("error while finding resource dir")?;
-            let all_resource_dirs = brioche_resources::find_resource_dirs(&current_exe, true)
-                .context("error while finding resource dir")?;
-            Mode::AutopackEnabled {
-                output_path,
-                resource_dir,
-                all_resource_dirs,
-            }
-        }
-    };
     let skip_unknown_libs = matches!(
         std::env::var("BRIOCHE_LD_AUTOPACK_SKIP_UNKNOWN_LIBS").as_deref(),
         Ok("true")
     );
+    let include_globs = std::env::var("BRIOCHE_LD_AUTOPACK_INCLUDE")
+        .ok()
+        .map(|globs| {
+            let mut globset = globset::GlobSetBuilder::new();
+
+            let globs = globs.split(';').filter(|glob| glob.is_empty());
+            for glob in globs {
+                let glob = globset::Glob::new(glob)
+                    .context("invalid glob in $BRIOCHE_LD_AUTOPACK_EXCLUDE")?;
+                globset.add(glob);
+            }
+
+            let globset = globset.build()?;
+            eyre::Ok(globset)
+        })
+        .transpose()?;
+    let exclude_globs = std::env::var("BRIOCHE_LD_AUTOPACK_EXCLUDE")
+        .ok()
+        .map(|globs| {
+            let mut globset = globset::GlobSetBuilder::new();
+
+            let globs = globs.split(';').filter(|glob| glob.is_empty());
+            for glob in globs {
+                let glob = globset::Glob::new(glob)
+                    .context("invalid glob in $BRIOCHE_LD_AUTOPACK_EXCLUDE")?;
+                globset.add(glob);
+            }
+
+            let globset = globset.build()?;
+            eyre::Ok(globset)
+        })
+        .transpose()?;
+
+    // Determine whether we will pack the resulting binary or not. We do this
+    // before running the command so we can bail early if the resource dir
+    // cannot be found.
+    let autopack_mode = match (autopack_mode.as_deref(), output_path) {
+        (Ok("false"), _) | (_, None) => Mode::AutopackDisabled,
+        (_, Some(output_path)) => {
+            let should_include = match (include_globs, exclude_globs) {
+                (Some(include_globs), _) => include_globs.is_match(&output_path),
+                (None, Some(exclude_globs)) => !exclude_globs.is_match(&output_path),
+                (None, None) => true,
+            };
+
+            if should_include {
+                let resource_dir = brioche_resources::find_output_resource_dir(&output_path)
+                    .context("error while finding resource dir")?;
+                let all_resource_dirs = brioche_resources::find_resource_dirs(&current_exe, true)
+                    .context("error while finding resource dir")?;
+                Mode::AutopackEnabled {
+                    output_path,
+                    resource_dir,
+                    all_resource_dirs,
+                }
+            } else {
+                log::info!(
+                    "not autopacking {} (excluded by glob patterns)",
+                    output_path.display()
+                );
+                Mode::AutopackDisabled
+            }
+        }
+    };
 
     log::debug!("autopack_mode: {autopack_mode:?}");
     log::debug!("skip unknown libs: {skip_unknown_libs}");
