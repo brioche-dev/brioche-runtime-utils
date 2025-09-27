@@ -16,7 +16,7 @@ globset = "0.4.16"
 goblin = "0.10.1"
 runnable-core = { path = "../runnable-core" }
 schemars = "1.0.4"
-serde = { version = "1.0.203", features = ["derive"] }
+serde = { version = "1.0.227", features = ["derive"] }
 serde_json = { version = "1.0.145" }
 serde_with = { version = "3.14.1", features = ["schemars_1"] }
 walkdir = "2.5.0"
