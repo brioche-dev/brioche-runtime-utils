@@ -29,11 +29,11 @@ jobs:
     name: Run tests
     strategy:
       matrix:
-        runs_on:
+        runs-on:
           - ubuntu-24.04
           - ubuntu-24.04-arm
           - macos-15
-    runs-on: ${{ matrix.runs_on }}
+    runs-on: ${{ matrix.runs-on }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -48,26 +48,26 @@ jobs:
       matrix:
         platform:
           - name: x86_64-linux
-            runs_on: ubuntu-24.04
+            runs-on: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             tools_target: x86_64-unknown-linux-musl
             packed_exec: brioche-packed-userland-exec
           - name: aarch64-linux
-            runs_on: ubuntu-24.04-arm
+            runs-on: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             tools_target: aarch64-unknown-linux-musl
             packed_exec: brioche-packed-userland-exec
           - name: x86_64-macos
-            runs_on: macos-15
+            runs-on: macos-15
             target: x86_64-apple-darwin
             tools_target: x86_64-apple-darwin
             packed_exec: brioche-packed-plain-exec
           - name: aarch64-macos
-            runs_on: macos-15
+            runs-on: macos-15
             target: aarch64-apple-darwin
             tools_target: aarch64-apple-darwin
             packed_exec: brioche-packed-plain-exec
-    runs-on: ${{ matrix.platform.runs_on }}
+    runs-on: ${{ matrix.platform.runs-on }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
