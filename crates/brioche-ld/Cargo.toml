@@ -11,7 +11,7 @@ brioche-resources = { path = "../brioche-resources" }
 bstr = "1.8.0"
 chumsky = "0.11.1"
 eyre = "0.6.12"
-thiserror = "2.0.16"
+thiserror = "2.0.17"
 
 [lints]
 workspace = true
