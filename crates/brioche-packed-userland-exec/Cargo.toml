@@ -10,7 +10,7 @@ brioche-pack = { workspace = true }
 brioche-resources = { path = "../brioche-resources" }
 bstr = "1.8.0"
 cfg-if = "1.0.3"
-libc = "0.2.176"
+libc = "0.2.177"
 thiserror = "2.0.17"
 
 [target.'cfg(target_os = "linux")'.dependencies]
