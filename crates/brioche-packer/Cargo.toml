@@ -12,8 +12,8 @@ bstr = "1.9.1"
 clap = { version = "4.5.49", features = ["derive"] }
 color-eyre = "0.6.5"
 eyre = "0.6.12"
-globset = "0.4.16"
-goblin = "0.10.2"
+globset = "0.4.17"
+goblin = "0.10.3"
 runnable-core = { path = "../runnable-core" }
 schemars = "1.0.4"
 serde = { version = "1.0.228", features = ["derive"] }
