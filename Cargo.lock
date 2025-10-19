@@ -178,7 +178,7 @@ dependencies = [
  "bstr",
  "eyre",
  "globset",
- "goblin 0.10.2",
+ "goblin 0.10.3",
  "pathdiff",
  "runnable-core",
  "serde_json",
@@ -209,7 +209,7 @@ dependencies = [
 [[package]]
 name = "brioche-pack"
 version = "0.1.5"
-source = "git+https://github.com/brioche-dev/brioche.git#29a4be6d8cbdce63c6a6639c9d190498dbaefa90"
+source = "git+https://github.com/brioche-dev/brioche.git#ae62812208bcec3049454fae4ca98e8feb20b90f"
 dependencies = [
  "bincode",
  "bstr",
@@ -258,7 +258,7 @@ dependencies = [
  "color-eyre",
  "eyre",
  "globset",
- "goblin 0.10.2",
+ "goblin 0.10.3",
  "runnable-core",
  "schemars 1.0.4",
  "serde",
@@ -324,9 +324,9 @@ dependencies = [
 
 [[package]]
 name = "cfg-if"
-version = "1.0.3"
+version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2fd1289c04a9ea8cb22300a459a72a385d7c73d3259e2ed7dcb2af674838cfa9"
+checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
 name = "chrono"
@@ -569,9 +569,9 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "globset"
-version = "0.4.16"
+version = "0.4.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54a1028dfc5f5df5da8a56a73e6c153c9a9708ec57232470703592a3f18e49f5"
+checksum = "eab69130804d941f8075cfd713bf8848a2c3b3f201a9457a11e6f87e1ab62305"
 dependencies = [
  "aho-corasick",
  "bstr",
@@ -593,9 +593,9 @@ dependencies = [
 
 [[package]]
 name = "goblin"
-version = "0.10.2"
+version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7be320f077239a0361c20d608b4768c62a1b77aa4946dd76395aa4cd502cba7d"
+checksum = "51876e3748c4a347fe65b906f2b1ae46a1e55a497b22c94c1f4f2c469ff7673a"
 dependencies = [
  "log",
  "plain",
@@ -1210,9 +1210,9 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "syn"
-version = "2.0.106"
+version = "2.0.107"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ede7c438028d4436d71104916910f5bb611972c5cfd7f89b8300a8186e6fada6"
+checksum = "2a26dbd934e5451d21ef060c018dae56fc073894c5a7896f882928a76e6d081b"
 dependencies = [
  "proc-macro2",
  "quote",
