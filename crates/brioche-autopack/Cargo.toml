@@ -9,7 +9,7 @@ brioche-pack = { workspace = true }
 brioche-resources = { path = "../brioche-resources" }
 bstr = "1.9.1"
 eyre = "0.6.12"
-globset = "0.4.17"
+globset = "0.4.18"
 goblin = "0.10.3"
 pathdiff = "0.2.3"
 runnable-core = { path = "../runnable-core" }
