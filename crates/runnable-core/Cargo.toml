@@ -7,7 +7,7 @@ rust-version.workspace = true
 [dependencies]
 bincode = "2.0.0-rc.3"
 brioche-resources = { path = "../brioche-resources" }
-bstr = "1.9.1"
+bstr = "1.12.1"
 schemars = "1.0.4"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_with = { version = "3.15.1", features = ["schemars_1"] }
