@@ -6,7 +6,7 @@ rust-version.workspace = true
 
 [dependencies]
 blake3 = "1.8.2"
-bstr = "1.9.1"
+bstr = "1.12.1"
 copy_dir = "0.1.3"
 pathdiff = "0.2.3"
 thiserror = "2.0.17"

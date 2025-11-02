@@ -8,7 +8,7 @@ rust-version.workspace = true
 bincode = "2.0.0-rc.3"
 brioche-pack = { workspace = true }
 brioche-resources = { path = "../brioche-resources" }
-bstr = "1.8.0"
+bstr = "1.12.1"
 cfg-if = "1.0.4"
 libc = "0.2.177"
 thiserror = "2.0.17"
