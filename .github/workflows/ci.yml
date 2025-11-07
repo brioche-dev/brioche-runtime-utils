@@ -11,7 +11,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
 
 env:
-  NIGHTLY_TOOLCHAIN: nightly-2025-07-01
+  NIGHTLY_TOOLCHAIN: nightly-2025-11-01
 
 jobs:
   check:
