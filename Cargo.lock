@@ -218,7 +218,7 @@ dependencies = [
 [[package]]
 name = "brioche-pack"
 version = "0.1.6"
-source = "git+https://github.com/brioche-dev/brioche.git#d7adfe5fad15b184aa201bf51f83faaec5b53199"
+source = "git+https://github.com/brioche-dev/brioche.git#e16e83083870814f80875d0acf40dee10a45c14f"
 dependencies = [
  "bincode",
  "bstr",
@@ -323,9 +323,9 @@ checksum = "46c5e41b57b8bba42a04676d81cb89e9ee8e859a1a66f80a5a72e1cb76b34d43"
 
 [[package]]
 name = "cc"
-version = "1.2.44"
+version = "1.2.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37521ac7aabe3d13122dc382493e20c9416f299d2ccd5b3a5340a2570cdeb0f3"
+checksum = "35900b6c8d709fb1d854671ae27aeaa9eec2f8b01b364e1619a40da3e6fe2afe"
 dependencies = [
  "find-msvc-tools",
  "shlex",
