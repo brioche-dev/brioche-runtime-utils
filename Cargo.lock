@@ -218,7 +218,7 @@ dependencies = [
 [[package]]
 name = "brioche-pack"
 version = "0.1.6"
-source = "git+https://github.com/brioche-dev/brioche.git#a888b07c2c15128e88ac4892731534ca673472e2"
+source = "git+https://github.com/brioche-dev/brioche.git#38a811f319da1bf18adf39d71fc8c3e4932a469e"
 dependencies = [
  "bincode",
  "bstr",
