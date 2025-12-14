@@ -154,22 +154,22 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Download artifacts (x86_64-linux)
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: brioche-runtime-utils-x86_64-linux
           path: artifacts/brioche
       - name: Download artifacts (aarch64-linux)
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: brioche-runtime-utils-aarch64-linux
           path: artifacts/brioche
       - name: Download artifacts (x86_64-macos)
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: brioche-runtime-utils-x86_64-macos
           path: artifacts/brioche
       - name: Download artifacts (aarch64-macos)
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: brioche-runtime-utils-aarch64-macos
           path: artifacts/brioche
