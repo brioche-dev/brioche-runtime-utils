@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-bincode = "2.0.0-rc.3"
+bincode = "3.0.0"
 brioche-resources = { path = "../brioche-resources" }
 bstr = "1.12.1"
 schemars = "1.0.4"
