@@ -5,10 +5,10 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-bincode = "2.0.0-rc.3"
+bincode = "3.0.0"
 brioche-resources = { path = "../brioche-resources" }
 bstr = "1.12.1"
-schemars = "1.0.4"
+schemars = "1.2.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_with = { version = "3.16.1", features = ["schemars_1"] }
 thiserror = "2.0.17"
