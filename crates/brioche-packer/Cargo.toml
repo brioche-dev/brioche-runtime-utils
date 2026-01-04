@@ -9,15 +9,15 @@ brioche-autopack = { path = "../brioche-autopack" }
 brioche-pack = { workspace = true }
 brioche-resources = { path = "../brioche-resources" }
 bstr = "1.12.1"
-clap = { version = "4.5.53", features = ["derive"] }
+clap = { version = "4.5.54", features = ["derive"] }
 color-eyre = "0.6.5"
 eyre = "0.6.12"
 globset = "0.4.18"
 goblin = "0.10.4"
 runnable-core = { path = "../runnable-core" }
-schemars = "1.0.4"
+schemars = "1.2.0"
 serde = { version = "1.0.228", features = ["derive"] }
-serde_json = { version = "1.0.145" }
+serde_json = { version = "1.0.148" }
 serde_with = { version = "3.16.1", features = ["schemars_1"] }
 walkdir = "2.5.0"
 
