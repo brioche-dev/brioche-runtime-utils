@@ -1039,8 +1039,8 @@ fn find_library(
                 return Ok(Some(lib_path));
             }
         } else if path.is_file() {
-            // Check if the search path is a file that matches the library
-            // name directly
+            // Check first if the search path is a file that matches the
+            // library name directly
             let path_filename = path
                 .file_name()
                 .ok_or_eyre("failed to get filename from path")?;
@@ -1048,8 +1048,17 @@ fn find_library(
                 return Ok(Some(path.to_owned()));
             }
 
-            // If the filename doesn't match, queue it for a further check
-            // if we don't find another path-based match
+            // If not, check if it's an alias path where the parent directory name
+            // matches the library name. The soname is encoded in the parent directory,
+            // not the filename.
+            if let Some(parent) = path.parent()
+                && let Some(parent_name) = parent.file_name()
+                && parent_name.to_str() == Some(library_name)
+            {
+                return Ok(Some(path.to_owned()));
+            }
+
+            // If neither check matched, queue it to be searched later
             library_search_path_files.push(path);
         }
     }
