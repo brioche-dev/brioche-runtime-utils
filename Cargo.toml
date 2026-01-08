@@ -32,12 +32,10 @@ split-debuginfo = "unpacked"
 
 [profile.release]
 codegen-units = 1
-lto = "thin"
-strip = "debuginfo"
+lto = true
+strip = "symbols"
 panic = "abort"
 
 [profile.release-tiny]
 inherits = "release"
 opt-level = "z"
-lto = true
-strip = "symbols"
