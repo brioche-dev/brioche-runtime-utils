@@ -393,12 +393,8 @@ fn autopack_path(
         if !ctx.config.quiet {
             println!("autopacked {}", path.display());
         }
-    } else if path_config.can_skip {
-        if !ctx.config.quiet {
-            println!("skipped {}", path.display());
-        }
-    } else {
-        eyre::bail!("failed to autopack path: {path:?}");
+    } else if path_config.can_skip && !ctx.config.quiet {
+        println!("skipped {}", path.display());
     }
 
     Ok(())
