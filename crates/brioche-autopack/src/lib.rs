@@ -443,12 +443,18 @@ fn autopack_kind(path: &Path) -> eyre::Result<Option<AutopackKind>> {
             return Ok(None);
         };
 
-        if program_object.interpreter.is_some() {
-            Ok(Some(AutopackKind::DynamicBinary))
-        } else if program_object.is_lib {
-            Ok(Some(AutopackKind::SharedLibrary))
-        } else {
-            Ok(None)
+        // Only ET_EXEC and ET_DYN can potentially be packed
+        match elf_object.header.e_type {
+            goblin::elf::header::ET_EXEC | goblin::elf::header::ET_DYN => {
+                if elf_object.interpreter.is_some() {
+                    Ok(Some(AutopackKind::DynamicBinary))
+                } else if elf_object.is_lib {
+                    Ok(Some(AutopackKind::SharedLibrary))
+                } else {
+                    Ok(None)
+                }
+            }
+            _ => Ok(None),
         }
     }
 }
