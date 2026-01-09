@@ -237,7 +237,7 @@ pub fn autopack(config: &AutopackConfig) -> eyre::Result<()> {
             pending_paths.extend(
                 paths
                     .iter()
-                    .map(|path| (path.clone(), AutopackPathConfig { can_skip: true })),
+                    .map(|path| (path.clone(), AutopackPathConfig { can_skip: false })),
             );
         }
         AutopackInputs::Globs {
@@ -279,7 +279,7 @@ pub fn autopack(config: &AutopackConfig) -> eyre::Result<()> {
                 {
                     pending_paths.insert(
                         entry.path().to_owned(),
-                        AutopackPathConfig { can_skip: false },
+                        AutopackPathConfig { can_skip: true },
                     );
                 }
             }
@@ -393,7 +393,7 @@ fn autopack_path(
         if !ctx.config.quiet {
             println!("autopacked {}", path.display());
         }
-    } else if !path_config.can_skip {
+    } else if path_config.can_skip {
         if !ctx.config.quiet {
             println!("skipped {}", path.display());
         }
