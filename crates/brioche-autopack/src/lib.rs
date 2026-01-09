@@ -439,7 +439,7 @@ fn autopack_kind(path: &Path) -> eyre::Result<Option<AutopackKind>> {
     } else {
         let program_object = goblin::Object::parse(&contents);
 
-        let Ok(goblin::Object::Elf(program_object)) = program_object else {
+        let Ok(goblin::Object::Elf(elf_object)) = program_object else {
             return Ok(None);
         };
 
@@ -478,14 +478,14 @@ fn autopack_dynamic_binary(
     let contents = std::fs::read(source_path)?;
     let program_object = goblin::Object::parse(&contents)?;
 
-    let goblin::Object::Elf(program_object) = program_object else {
+    let goblin::Object::Elf(elf_object) = program_object else {
         eyre::bail!(
             "tried to autopack non-ELF dynamic binary: {}",
             source_path.display()
         );
     };
 
-    let Some(interpreter) = program_object.interpreter else {
+    let Some(interpreter) = elf_object.interpreter else {
         eyre::bail!(
             "tried to autopack dynamic binary without an interpreter: {}",
             source_path.display()
@@ -525,7 +525,7 @@ fn autopack_dynamic_binary(
         )
     })?;
 
-    let needed_libraries: VecDeque<_> = program_object
+    let needed_libraries: VecDeque<_> = elf_object
         .libraries
         .iter()
         .copied()
@@ -608,14 +608,14 @@ fn autopack_shared_library(
     let contents = std::fs::read(source_path)?;
     let program_object = goblin::Object::parse(&contents)?;
 
-    let goblin::Object::Elf(program_object) = program_object else {
+    let goblin::Object::Elf(elf_object) = program_object else {
         eyre::bail!(
             "tried to autopack non-ELF dynamic binary: {}",
             source_path.display()
         );
     };
 
-    let needed_libraries: VecDeque<_> = program_object
+    let needed_libraries: VecDeque<_> = elf_object
         .libraries
         .iter()
         .copied()
@@ -943,10 +943,10 @@ fn collect_all_library_dirs(
         };
 
         // TODO: Support other object files
-        let goblin::Object::Elf(library_elf) = library_object else {
+        let goblin::Object::Elf(elf_object) = library_object else {
             continue;
         };
-        needed_libraries.extend(library_elf.libraries.iter().map(|lib| (*lib).to_string()));
+        needed_libraries.extend(elf_object.libraries.iter().map(|lib| (*lib).to_string()));
 
         // If the library has a Brioche pack, then use the included resources
         // for additional search directories
