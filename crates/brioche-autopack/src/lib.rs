@@ -229,7 +229,7 @@ struct AutopackPathConfig {
 }
 
 pub fn autopack(config: &AutopackConfig) -> eyre::Result<()> {
-    let ctx = autopack_context(config)?;
+    let mut ctx = autopack_context(config)?;
     let mut pending_paths = BTreeMap::<PathBuf, AutopackPathConfig>::new();
 
     match &config.inputs {
@@ -287,16 +287,26 @@ pub fn autopack(config: &AutopackConfig) -> eyre::Result<()> {
     }
 
     while let Some((path, path_config)) = pending_paths.pop_first() {
-        autopack_path(&ctx, &path, &path_config, &mut pending_paths)?;
+        autopack_path(&mut ctx, &path, &path_config, &mut pending_paths)?;
     }
 
     Ok(())
+}
+
+/// Information about a processed library.
+#[derive(Default)]
+struct ProcessedLibraryInfo {
+    resource_dir: PathBuf,
+    dependencies: Vec<String>,
+    extra_search_paths: Vec<PathBuf>,
 }
 
 struct AutopackContext<'a> {
     config: &'a AutopackConfig,
     link_dependency_library_paths: Vec<PathBuf>,
     link_dependency_paths: Vec<PathBuf>,
+    /// Global cache for processed libraries, keyed by library name.
+    processed_libraries: HashMap<String, ProcessedLibraryInfo>,
 }
 
 fn autopack_context(config: &AutopackConfig) -> eyre::Result<AutopackContext<'_>> {
@@ -379,11 +389,12 @@ fn autopack_context(config: &AutopackConfig) -> eyre::Result<AutopackContext<'_>
         config,
         link_dependency_library_paths,
         link_dependency_paths,
+        processed_libraries: HashMap::new(),
     })
 }
 
 fn autopack_path(
-    ctx: &AutopackContext,
+    ctx: &mut AutopackContext,
     path: &Path,
     path_config: &AutopackPathConfig,
     pending_paths: &mut BTreeMap<PathBuf, AutopackPathConfig>,
@@ -401,7 +412,7 @@ fn autopack_path(
 }
 
 fn try_autopack_path(
-    ctx: &AutopackContext,
+    ctx: &mut AutopackContext,
     source_path: &Path,
     output_path: &Path,
     pending_paths: &mut BTreeMap<PathBuf, AutopackPathConfig>,
@@ -464,7 +475,7 @@ enum AutopackKind {
 }
 
 fn autopack_dynamic_binary(
-    ctx: &AutopackContext,
+    ctx: &mut AutopackContext,
     source_path: &Path,
     output_path: &Path,
     pending_paths: &mut BTreeMap<PathBuf, AutopackPathConfig>,
@@ -598,7 +609,7 @@ fn autopack_dynamic_binary(
 }
 
 fn autopack_shared_library(
-    ctx: &AutopackContext,
+    ctx: &mut AutopackContext,
     source_path: &Path,
     output_path: &Path,
     pending_paths: &mut BTreeMap<PathBuf, AutopackPathConfig>,
@@ -670,7 +681,7 @@ fn autopack_shared_library(
 }
 
 fn autopack_script(
-    ctx: &AutopackContext,
+    ctx: &mut AutopackContext,
     source_path: &Path,
     output_path: &Path,
     pending_paths: &mut BTreeMap<PathBuf, AutopackPathConfig>,
@@ -820,7 +831,7 @@ fn autopack_script(
 }
 
 fn autopack_repack(
-    ctx: &AutopackContext,
+    ctx: &mut AutopackContext,
     source_path: &Path,
     output_path: &Path,
     pending_paths: &mut BTreeMap<PathBuf, AutopackPathConfig>,
@@ -869,15 +880,16 @@ fn autopack_repack(
 }
 
 fn collect_all_library_dirs(
-    ctx: &AutopackContext,
+    ctx: &mut AutopackContext,
     dynamic_linking_config: &DynamicLinkingConfig,
     mut needed_libraries: VecDeque<String>,
     pending_paths: &mut BTreeMap<PathBuf, AutopackPathConfig>,
 ) -> eyre::Result<Vec<PathBuf>> {
-    let mut library_search_paths = vec![];
+    let mut library_search_paths = Vec::with_capacity(
+        dynamic_linking_config.library_paths.len() + ctx.link_dependency_library_paths.len(),
+    );
     let mut resource_library_dirs = vec![];
     let mut found_libraries = HashSet::new();
-    let mut found_library_dirs = HashSet::new();
 
     library_search_paths.extend_from_slice(&dynamic_linking_config.library_paths);
     library_search_paths.extend_from_slice(&ctx.link_dependency_library_paths);
@@ -888,7 +900,23 @@ fn collect_all_library_dirs(
             continue;
         }
 
-        // Find the path to the library
+        // Check global cache first - if processed before, reuse cached info.
+        if let Some(cached) = ctx.processed_libraries.get(&library_name) {
+            // Add to output if not skipped
+            if !dynamic_linking_config
+                .skip_libraries
+                .contains(&library_name)
+            {
+                resource_library_dirs.push(cached.resource_dir.clone());
+                found_libraries.insert(library_name);
+            }
+
+            needed_libraries.extend(cached.dependencies.iter().cloned());
+            library_search_paths.extend(cached.extra_search_paths.iter().cloned());
+            continue;
+        }
+
+        // Not cached - find the path to the library
         let library_path = find_library(&library_search_paths, &library_name)?;
         let Some(library_path) = library_path else {
             if dynamic_linking_config.skip_unknown_libraries {
@@ -901,7 +929,7 @@ fn collect_all_library_dirs(
         // Autopack the library if it's pending
         try_autopack_dependency(ctx, &library_path, pending_paths)?;
 
-        found_libraries.insert(library_name.clone());
+        let mut cached_info = ProcessedLibraryInfo::default();
 
         // Don't add the library if it's been skipped. We still do everything
         // else so we can add transitive dependencies even if a library has
@@ -930,25 +958,37 @@ fn collect_all_library_dirs(
                 .ok_or_eyre("failed to get resource parent dir")?
                 .to_owned();
 
-            let is_new_library_path = found_library_dirs.insert(library_resource_dir.clone());
-            if is_new_library_path {
-                resource_library_dirs.push(library_resource_dir);
-            }
+            cached_info.resource_dir.clone_from(&library_resource_dir);
+            resource_library_dirs.push(library_resource_dir);
+            found_libraries.insert(library_name.clone());
         }
 
         // Try to get the dynamic dependencies from the library itself
         let Ok(library_file) = std::fs::read(&library_path) else {
+            // Cache even if we can't read the file (no dependencies)
+            ctx.processed_libraries.insert(library_name, cached_info);
             continue;
         };
         let Ok(library_object) = goblin::Object::parse(&library_file) else {
+            // Cache even if we can't parse (no dependencies)
+            ctx.processed_libraries.insert(library_name, cached_info);
             continue;
         };
 
         // TODO: Support other object files
         let goblin::Object::Elf(elf_object) = library_object else {
+            // Cache even for non-ELF objects (no dependencies)
+            ctx.processed_libraries.insert(library_name, cached_info);
             continue;
         };
-        needed_libraries.extend(elf_object.libraries.iter().map(|lib| (*lib).to_string()));
+
+        let deps: Vec<String> = elf_object
+            .libraries
+            .iter()
+            .map(|lib| (*lib).to_string())
+            .collect();
+        needed_libraries.extend(deps.iter().cloned());
+        cached_info.dependencies = deps;
 
         // If the library has a Brioche pack, then use the included resources
         // for additional search directories
@@ -971,9 +1011,15 @@ fn collect_all_library_dirs(
                     continue;
                 };
 
+                cached_info
+                    .extra_search_paths
+                    .push(library_dir_path.clone());
                 library_search_paths.push(library_dir_path);
             }
         }
+
+        // Cache the results
+        ctx.processed_libraries.insert(library_name, cached_info);
     }
 
     Ok(resource_library_dirs)
@@ -995,8 +1041,8 @@ fn find_library(
                 return Ok(Some(lib_path));
             }
         } else if path.is_file() {
-            // Check if the search path is a file that matches the library
-            // name directly
+            // Check first if the search path is a file that matches the
+            // library name directly
             let path_filename = path
                 .file_name()
                 .ok_or_eyre("failed to get filename from path")?;
@@ -1004,8 +1050,17 @@ fn find_library(
                 return Ok(Some(path.to_owned()));
             }
 
-            // If the filename doesn't match, queue it for a further check
-            // if we don't find another path-based match
+            // If not, check if it's an alias path where the parent directory name
+            // matches the library name. The soname is encoded in the parent directory,
+            // not the filename.
+            if let Some(parent) = path.parent()
+                && let Some(parent_name) = parent.file_name()
+                && parent_name.to_str() == Some(library_name)
+            {
+                return Ok(Some(path.to_owned()));
+            }
+
+            // If neither check matched, queue it to be searched later
             library_search_path_files.push(path);
         }
     }
@@ -1063,7 +1118,7 @@ fn add_named_blob_from(
 }
 
 fn try_autopack_dependency(
-    ctx: &AutopackContext,
+    ctx: &mut AutopackContext,
     path: &Path,
     pending_paths: &mut BTreeMap<PathBuf, AutopackPathConfig>,
 ) -> eyre::Result<()> {
