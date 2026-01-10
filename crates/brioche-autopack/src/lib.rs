@@ -237,7 +237,7 @@ pub fn autopack(config: &AutopackConfig) -> eyre::Result<()> {
             pending_paths.extend(
                 paths
                     .iter()
-                    .map(|path| (path.clone(), AutopackPathConfig { can_skip: true })),
+                    .map(|path| (path.clone(), AutopackPathConfig { can_skip: false })),
             );
         }
         AutopackInputs::Globs {
@@ -279,7 +279,7 @@ pub fn autopack(config: &AutopackConfig) -> eyre::Result<()> {
                 {
                     pending_paths.insert(
                         entry.path().to_owned(),
-                        AutopackPathConfig { can_skip: false },
+                        AutopackPathConfig { can_skip: true },
                     );
                 }
             }
@@ -404,12 +404,8 @@ fn autopack_path(
         if !ctx.config.quiet {
             println!("autopacked {}", path.display());
         }
-    } else if !path_config.can_skip {
-        if !ctx.config.quiet {
-            println!("skipped {}", path.display());
-        }
-    } else {
-        eyre::bail!("failed to autopack path: {path:?}");
+    } else if path_config.can_skip && !ctx.config.quiet {
+        println!("skipped {}", path.display());
     }
 
     Ok(())
@@ -450,16 +446,22 @@ fn autopack_kind(path: &Path) -> eyre::Result<Option<AutopackKind>> {
     } else {
         let program_object = goblin::Object::parse(&contents);
 
-        let Ok(goblin::Object::Elf(program_object)) = program_object else {
+        let Ok(goblin::Object::Elf(elf_object)) = program_object else {
             return Ok(None);
         };
 
-        if program_object.interpreter.is_some() {
-            Ok(Some(AutopackKind::DynamicBinary))
-        } else if program_object.is_lib {
-            Ok(Some(AutopackKind::SharedLibrary))
-        } else {
-            Ok(None)
+        // Only ET_EXEC and ET_DYN can potentially be packed
+        match elf_object.header.e_type {
+            goblin::elf::header::ET_EXEC | goblin::elf::header::ET_DYN => {
+                if elf_object.interpreter.is_some() {
+                    Ok(Some(AutopackKind::DynamicBinary))
+                } else if elf_object.is_lib {
+                    Ok(Some(AutopackKind::SharedLibrary))
+                } else {
+                    Ok(None)
+                }
+            }
+            _ => Ok(None),
         }
     }
 }
@@ -489,14 +491,14 @@ fn autopack_dynamic_binary(
     let contents = std::fs::read(source_path)?;
     let program_object = goblin::Object::parse(&contents)?;
 
-    let goblin::Object::Elf(program_object) = program_object else {
+    let goblin::Object::Elf(elf_object) = program_object else {
         eyre::bail!(
             "tried to autopack non-ELF dynamic binary: {}",
             source_path.display()
         );
     };
 
-    let Some(interpreter) = program_object.interpreter else {
+    let Some(interpreter) = elf_object.interpreter else {
         eyre::bail!(
             "tried to autopack dynamic binary without an interpreter: {}",
             source_path.display()
@@ -536,7 +538,7 @@ fn autopack_dynamic_binary(
         )
     })?;
 
-    let needed_libraries: VecDeque<_> = program_object
+    let needed_libraries: VecDeque<_> = elf_object
         .libraries
         .iter()
         .copied()
@@ -619,14 +621,14 @@ fn autopack_shared_library(
     let contents = std::fs::read(source_path)?;
     let program_object = goblin::Object::parse(&contents)?;
 
-    let goblin::Object::Elf(program_object) = program_object else {
+    let goblin::Object::Elf(elf_object) = program_object else {
         eyre::bail!(
             "tried to autopack non-ELF dynamic binary: {}",
             source_path.display()
         );
     };
 
-    let needed_libraries: VecDeque<_> = program_object
+    let needed_libraries: VecDeque<_> = elf_object
         .libraries
         .iter()
         .copied()
@@ -974,13 +976,13 @@ fn collect_all_library_dirs(
         };
 
         // TODO: Support other object files
-        let goblin::Object::Elf(library_elf) = library_object else {
+        let goblin::Object::Elf(elf_object) = library_object else {
             // Cache even for non-ELF objects (no dependencies)
             ctx.processed_libraries.insert(library_name, cached_info);
             continue;
         };
 
-        let deps: Vec<String> = library_elf
+        let deps: Vec<String> = elf_object
             .libraries
             .iter()
             .map(|lib| (*lib).to_string())
