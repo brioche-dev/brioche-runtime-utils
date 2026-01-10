@@ -102,7 +102,8 @@ jobs:
             --profile=release-tiny \
             --target="$TOOLS_TARGET" \
             -Z panic-immediate-abort \
-            -Z 'build-std=std,panic_abort'
+            -Z 'build-std=std,panic_abort' \
+            -Z 'build-std-features=optimize_for_size'
         env:
           TOOLS_TARGET: ${{ matrix.tools-target }}
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-gnu-gcc
