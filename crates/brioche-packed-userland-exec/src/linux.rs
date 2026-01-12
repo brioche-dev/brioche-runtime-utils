@@ -1,6 +1,7 @@
 #![cfg(target_os = "linux")]
 
-use std::ffi::{CStr, CString};
+use core::ffi::CStr;
+use std::ffi::CString;
 
 use bstr::ByteSlice as _;
 
@@ -162,8 +163,8 @@ enum PackedError {
     ResourceNotFound,
 }
 
-impl std::fmt::Display for PackedError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for PackedError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str(error_summary(self))
     }
 }

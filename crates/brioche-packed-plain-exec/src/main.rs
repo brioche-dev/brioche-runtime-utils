@@ -1,3 +1,5 @@
+#![warn(clippy::std_instead_of_core)]
+
 use std::{ffi::OsString, os::unix::process::CommandExt as _, path::PathBuf, process::ExitCode};
 
 use bstr::ByteSlice as _;

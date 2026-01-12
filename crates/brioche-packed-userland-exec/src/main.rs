@@ -1,4 +1,5 @@
 #![cfg_attr(all(target_os = "linux", not(test)), no_main)]
+#![warn(clippy::std_instead_of_core)]
 
 mod linux;
 
