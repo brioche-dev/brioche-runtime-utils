@@ -12,7 +12,11 @@ unsafe extern "C" {
 }
 
 #[inline(always)]
-#[allow(clippy::missing_safety_doc)]
+#[allow(
+    clippy::inline_always,
+    clippy::missing_safety_doc,
+    clippy::similar_names
+)]
 pub unsafe fn entrypoint(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int {
     let mut args = vec![];
     let mut env_vars = vec![];
@@ -169,7 +173,7 @@ impl core::fmt::Display for PackedError {
     }
 }
 
-fn error_summary(error: &PackedError) -> &'static str {
+const fn error_summary(error: &PackedError) -> &'static str {
     match error {
         PackedError::IoError(_) => "io error",
         PackedError::ExtractPackError(error) => match error {

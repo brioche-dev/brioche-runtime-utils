@@ -6,7 +6,7 @@ mod linux;
 cfg_if::cfg_if! {
     if #[cfg(target_os = "linux")] {
         #[cfg_attr(not(test), unsafe(no_mangle))]
-        #[allow(clippy::missing_safety_doc)]
+        #[allow(clippy::missing_safety_doc, clippy::similar_names)]
         pub unsafe extern "C" fn main(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int {
             unsafe {
                 linux::entrypoint(argc, argv)
