@@ -1,10 +1,11 @@
 use std::{
     collections::{BTreeMap, HashMap, HashSet, VecDeque},
+    ffi::OsStr,
     io::{BufRead as _, Read as _, Write as _},
+    os::unix::ffi::{OsStrExt as _, OsStringExt as _},
     path::{Path, PathBuf},
 };
 
-use bstr::{ByteSlice as _, ByteVec as _};
 use eyre::{Context as _, ContextCompat as _, OptionExt as _};
 
 pub fn pack_source(
@@ -14,11 +15,9 @@ pub fn pack_source(
 ) -> eyre::Result<PackSource> {
     let source = match pack {
         brioche_pack::Pack::LdLinux { program, .. } => {
-            let program = program
-                .to_path()
-                .map_err(|_| eyre::eyre!("invalid program path: {}", bstr::BStr::new(&program)))?;
-            let program = brioche_resources::find_in_resource_dirs(all_resource_dirs, program)
-                .ok_or_else(|| eyre::eyre!("resource not found: {}", program.display()))?;
+            let program_path = Path::new(OsStr::from_bytes(program));
+            let program = brioche_resources::find_in_resource_dirs(all_resource_dirs, program_path)
+                .ok_or_else(|| eyre::eyre!("resource not found: {}", program_path.display()))?;
 
             PackSource::Path(program)
         }
@@ -39,9 +38,7 @@ pub fn pack_source(
 
                 let runnable_source_path = match runnable_source.path {
                     runnable_core::RunnablePath::RelativePath { path } => {
-                        let path = path
-                            .to_path()
-                            .map_err(|_| eyre::eyre!("invalid relative path: {path:?}"))?;
+                        let path = Path::new(OsStr::from_bytes(&path));
                         let new_source_path = source_path.join(path);
 
                         eyre::ensure!(
@@ -53,10 +50,8 @@ pub fn pack_source(
                         new_source_path
                     }
                     runnable_core::RunnablePath::Resource { resource } => {
-                        let resource = resource
-                            .to_path()
-                            .map_err(|_| eyre::eyre!("invalid resource path: {resource:?}"))?;
-                        brioche_resources::find_in_resource_dirs(all_resource_dirs, resource)
+                        let resource_path = Path::new(OsStr::from_bytes(&resource));
+                        brioche_resources::find_in_resource_dirs(all_resource_dirs, resource_path)
                             .ok_or_else(|| eyre::eyre!("resource not found: {resource:?}"))?
                     }
                 };
@@ -198,18 +193,12 @@ fn relative_template(
                     // TODO: Handle path resolution in a cross-platform way.
                     // This could change based on the host platform
 
-                    let path = path
-                        .to_path()
-                        .with_context(|| format!("failed to parse path {path:?}"))?;
+                    let path = Path::new(OsStr::from_bytes(path));
 
                     let full_path = base_path.join(path);
                     let new_relative_path = pathdiff::diff_paths(full_path, output_dir)
                         .context("failed to get path relative to output dir")?;
-                    let new_relative_path = <Vec<u8>>::from_path_buf(new_relative_path).map_err(
-                        |new_relative_path| {
-                            eyre::eyre!("failed to convert path {new_relative_path:?}")
-                        },
-                    )?;
+                    let new_relative_path = new_relative_path.into_os_string().into_vec();
 
                     eyre::Ok(runnable_core::TemplateComponent::RelativePath {
                         path: new_relative_path,
@@ -559,24 +548,18 @@ fn autopack_dynamic_binary(
         pending_paths,
     )?;
 
-    let program = <Vec<u8>>::from_path_buf(program_resource_path)
-        .map_err(|_| eyre::eyre!("invalid UTF-8 in path"))?;
-    let interpreter = <Vec<u8>>::from_path_buf(interpreter_resource_path)
-        .map_err(|_| eyre::eyre!("invalid UTF-8 in path"))?;
+    let program = program_resource_path.into_os_string().into_vec();
+    let interpreter = interpreter_resource_path.into_os_string().into_vec();
     let library_dirs = library_dir_resource_paths
         .into_iter()
-        .map(|resource_path| {
-            <Vec<u8>>::from_path_buf(resource_path)
-                .map_err(|_| eyre::eyre!("invalid UTF-8 in path"))
-        })
-        .collect::<eyre::Result<Vec<_>>>()?;
+        .map(|resource_path| resource_path.into_os_string().into_vec())
+        .collect();
     let runtime_library_dirs = dynamic_binary_config
         .extra_runtime_library_paths
         .iter()
         .map(|path| {
             let path = pathdiff::diff_paths(path, output_path_parent).ok_or_else(|| eyre::eyre!("failed to get relative path from output path {output_path_parent:?} to runtime library path {path:?}"))?;
-            <Vec<u8>>::from_path_buf(path)
-                .map_err(|_| eyre::eyre!("invalid UTF-8 in path"))
+            eyre::Ok(path.into_os_string().into_vec())
         })
         .collect::<eyre::Result<Vec<_>>>()?;
 
@@ -657,11 +640,8 @@ fn autopack_shared_library(
 
     let library_dirs = library_dir_resource_paths
         .into_iter()
-        .map(|resource_path| {
-            <Vec<u8>>::from_path_buf(resource_path)
-                .map_err(|_| eyre::eyre!("invalid UTF-8 in path"))
-        })
-        .collect::<eyre::Result<Vec<_>>>()?;
+        .map(|resource_path| resource_path.into_os_string().into_vec())
+        .collect();
     let pack = brioche_pack::Pack::Static { library_dirs };
 
     if !pack.should_add_to_executable() && !shared_library_config.allow_empty {
@@ -756,27 +736,18 @@ fn autopack_script(
         .filter_map(|component| match component {
             runnable_core::TemplateComponent::Literal { .. }
             | runnable_core::TemplateComponent::RelativePath { .. } => None,
-            runnable_core::TemplateComponent::Resource { resource } => Some(
-                resource
-                    .to_path()
-                    .map_err(|_| eyre::eyre!("invalid resource path")),
-            ),
-        })
-        .collect::<eyre::Result<Vec<_>>>()?;
+            runnable_core::TemplateComponent::Resource { resource } => {
+                Some(PathBuf::from(OsStr::from_bytes(resource)))
+            }
+        });
 
     let resource_paths = [command_resource.clone(), script_resource.clone()]
         .into_iter()
-        .chain(
-            env_resource_paths
-                .into_iter()
-                .map(std::borrow::ToOwned::to_owned),
-        )
-        .map(|path| {
-            Vec::<u8>::from_path_buf(path).map_err(|_| eyre::eyre!("invalid resource path"))
-        })
-        .collect::<eyre::Result<Vec<_>>>()?;
+        .chain(env_resource_paths)
+        .map(|path| path.into_os_string().into_vec())
+        .collect();
 
-    let command = runnable_core::Template::from_resource_path(command_resource)?;
+    let command = runnable_core::Template::from_resource_path(command_resource);
 
     let mut args = vec![];
     if let Some(arg) = arg {
@@ -785,7 +756,7 @@ fn autopack_script(
         });
     }
     args.push(runnable_core::ArgValue::Arg {
-        value: runnable_core::Template::from_resource_path(script_resource.clone())?,
+        value: runnable_core::Template::from_resource_path(script_resource.clone()),
     });
     args.push(runnable_core::ArgValue::Rest);
 
@@ -799,7 +770,7 @@ fn autopack_script(
         env,
         clear_env: script_config.clear_env,
         source: Some(runnable_core::RunnableSource {
-            path: runnable_core::RunnablePath::from_resource_path(script_resource)?,
+            path: runnable_core::RunnablePath::from_resource_path(script_resource),
         }),
     };
     let pack = brioche_pack::Pack::Metadata {
@@ -1001,9 +972,7 @@ fn collect_all_library_dirs(
             };
 
             for library_dir in library_dirs {
-                let Ok(library_dir) = library_dir.to_path() else {
-                    continue;
-                };
+                let library_dir = Path::new(OsStr::from_bytes(library_dir));
                 let Some(library_dir_path) = brioche_resources::find_in_resource_dirs(
                     &ctx.config.all_resource_dirs,
                     library_dir,

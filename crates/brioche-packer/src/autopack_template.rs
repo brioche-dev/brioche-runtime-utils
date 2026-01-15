@@ -1,9 +1,9 @@
 use std::{
     collections::{HashMap, HashSet},
+    os::unix::ffi::OsStringExt as _,
     path::{Path, PathBuf},
 };
 
-use bstr::ByteVec as _;
 use runnable_core::encoding::TickEncoded;
 
 pub struct AutopackConfigTemplateContext {
@@ -426,8 +426,7 @@ impl EnvValueTemplateValueComponent {
                             path,
                             env_var,
                         )?;
-                        let resource = <Vec<u8>>::from_path_buf(resource)
-                            .map_err(|_| eyre::eyre!("invalid path"))?;
+                        let resource = resource.into_os_string().into_vec();
                         Ok(runnable_core::TemplateComponent::Resource { resource })
                     }
                 }

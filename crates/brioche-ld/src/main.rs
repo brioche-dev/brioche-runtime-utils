@@ -1,11 +1,12 @@
 use std::{
     collections::{HashSet, VecDeque},
+    ffi::{OsStr, OsString},
     io::Read,
-    path::PathBuf,
+    os::unix::ffi::{OsStrExt as _, OsStringExt as _},
+    path::{Path, PathBuf},
     process::ExitCode,
 };
 
-use bstr::{ByteSlice as _, ByteVec as _};
 use chumsky::prelude::*;
 use eyre::{Context as _, OptionExt as _};
 
@@ -64,32 +65,27 @@ fn run() -> eyre::Result<ExitCode> {
 
     let mut args: VecDeque<_> = std::env::args_os().skip(1).collect();
     while let Some(arg) = args.pop_front() {
-        let arg = <[u8]>::from_os_str(&arg).ok_or_eyre("invalid arg")?;
-        let arg = bstr::BStr::new(arg);
+        let arg = arg.as_bytes();
 
-        if &**arg == b"-o" {
+        if arg == b"-o" {
             let output = args.pop_front().ok_or_eyre("invalid arg")?;
             output_path = Some(PathBuf::from(output));
         } else if let Some(output) = arg.strip_prefix(b"-o") {
-            let output = output.to_path().map_err(|_| eyre::eyre!("invalid path"))?;
+            let output = Path::new(OsStr::from_bytes(output));
             output_path = Some(output.to_path_buf());
-        } else if &**arg == b"-L" {
+        } else if arg == b"-L" {
             let lib_path = args.pop_front().ok_or_eyre("invalid arg")?;
             library_search_paths.push(PathBuf::from(lib_path));
         } else if let Some(lib_path) = arg.strip_prefix(b"-L") {
-            let lib_path = lib_path
-                .to_path()
-                .map_err(|_| eyre::eyre!("invalid path"))?;
+            let lib_path = Path::new(OsStr::from_bytes(lib_path));
             library_search_paths.push(lib_path.to_owned());
-        } else if &**arg == b"--help" || &**arg == b"--version" || &**arg == b"-v" {
+        } else if arg == b"--help" || arg == b"--version" || arg == b"-v" {
             // Skip packing if we're just showing help or version info
             output_path = None;
         } else if arg.starts_with(b"-") {
             // Ignore other arguments
         } else if let Some(arg_file_path) = arg.strip_prefix(b"@") {
-            let arg_file_path = arg_file_path
-                .to_path()
-                .map_err(|_| eyre::eyre!("invalid path"))?;
+            let arg_file_path = Path::new(OsStr::from_bytes(arg_file_path));
 
             // `@file` arg. Arguments are parsed and read from `file`
             file_dereferences += 1;
@@ -97,7 +93,7 @@ fn run() -> eyre::Result<ExitCode> {
                 eyre::bail!("encountered more than {MAX_FILE_DEREFERENCES} '@file' arguments");
             }
 
-            let mut file_contents = Vec::<u8>::new();
+            let mut file_contents = Vec::new();
             let mut file = std::fs::File::open(arg_file_path).wrap_err_with(|| {
                 format!("failed to read args from path {}", arg_file_path.display())
             })?;
@@ -118,11 +114,11 @@ fn run() -> eyre::Result<ExitCode> {
             // Add each parsed arg to the start of `args`, so they will get
             // processed in place of the `@file` arg
             for new_arg in args_from_file.into_iter().rev() {
-                let new_arg = Vec::from(new_arg).into_os_string()?;
+                let new_arg = OsString::from_vec(new_arg);
                 args.push_front(new_arg);
             }
         } else {
-            let input_path = arg.to_path().map_err(|_| eyre::eyre!("invalid path"))?;
+            let input_path = Path::new(OsStr::from_bytes(arg));
             input_paths.push(input_path.to_owned());
         }
     }
@@ -205,8 +201,7 @@ fn run() -> eyre::Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-fn file_args_parser<'a>() -> impl Parser<'a, &'a [u8], Vec<bstr::BString>, extra::Err<Rich<'a, u8>>>
-{
+fn file_args_parser<'a>() -> impl Parser<'a, &'a [u8], Vec<Vec<u8>>, extra::Err<Rich<'a, u8>>> {
     let escape = just(b'\\').ignore_then(any());
     let bare_arg = none_of(b"\\\"' \t\r\n\x0C")
         .or(escape)
@@ -226,8 +221,7 @@ fn file_args_parser<'a>() -> impl Parser<'a, &'a [u8], Vec<bstr::BString>, extra
     let arg = bare_arg
         .or(double_quoted_arg)
         .or(single_quoted_arg)
-        .padded()
-        .map(bstr::BString::new);
+        .padded();
     arg.repeated().collect()
 }
 
@@ -243,15 +237,23 @@ mod tests {
     fn test_file_args_parser() {
         let parser = file_args_parser();
         assert_eq!(parser.parse(b"").unwrap(), EMPTY_OUTPUT);
-        assert_eq!(parser.parse(b"foo").unwrap(), ["foo"]);
-        assert_eq!(parser.parse(b"foo bar baz").unwrap(), ["foo", "bar", "baz"]);
+        assert_eq!(parser.parse(b"foo").unwrap(), [b"foo"]);
+        assert_eq!(
+            parser.parse(b"foo bar baz").unwrap(),
+            [b"foo", b"bar", b"baz"]
+        );
         assert_eq!(parser.parse(b"\"\"").unwrap(), [b""]);
         assert_eq!(parser.parse(b"''").unwrap(), [b""]);
         assert_eq!(
             parser
                 .parse(b"a \"bcd'ef'\\\\\\\"gh\" \r\n 'ijk\\'' \"lmn \t opq\\\"\"")
                 .unwrap(),
-            ["a", "bcd'ef'\\\"gh", "ijk'", "lmn \t opq\""],
+            [
+                &b"a"[..],
+                &b"bcd'ef'\\\"gh"[..],
+                &b"ijk'"[..],
+                &b"lmn \t opq\""[..]
+            ],
         );
         assert_eq!(
             parser.parse(b"a \x00\xFF b").unwrap(),
