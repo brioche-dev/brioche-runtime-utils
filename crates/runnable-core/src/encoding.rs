@@ -32,6 +32,7 @@ where
     }
 }
 
+#[cfg(feature = "schema")]
 impl<T> serde_with::schemars_1::JsonSchemaAs<T> for TickEncoded {
     fn schema_name() -> Cow<'static, str> {
         "TickEncoded".into()
