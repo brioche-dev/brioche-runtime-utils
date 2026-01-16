@@ -246,7 +246,6 @@ dependencies = [
 name = "brioche-packed-userland-exec"
 version = "0.1.1"
 dependencies = [
- "bincode",
  "brioche-pack",
  "brioche-resources",
  "bstr",
@@ -992,7 +991,6 @@ checksum = "7a2d987857b319362043e95f5353c0535c1f58eec5336fdfcf626430af7def58"
 name = "runnable-core"
 version = "0.1.0"
 dependencies = [
- "bincode",
  "brioche-resources",
  "bstr",
  "schemars 1.2.0",
