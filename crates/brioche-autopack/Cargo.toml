@@ -14,7 +14,7 @@ goblin = "0.10.4"
 pathdiff = "0.2.3"
 runnable-core = { path = "../runnable-core" }
 serde_json = "1.0.149"
-thiserror = "2.0.17"
+thiserror = "2.0.18"
 walkdir = "2.5.0"
 
 [lints]
