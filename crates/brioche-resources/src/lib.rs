@@ -122,7 +122,8 @@ pub fn add_named_blob(
     if executable {
         blob_file_options.mode(0o777);
     }
-    let mut blob_file = blob_file_options.open(&blob_temp_path)?;
+    let blob_file = blob_file_options.open(&blob_temp_path)?;
+    let mut blob_file = std::io::BufWriter::new(blob_file);
 
     // Read the contents, both copying it to the temporary file and hashing
     // as we go
