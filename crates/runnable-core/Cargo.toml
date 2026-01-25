@@ -4,13 +4,16 @@ version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 
+[features]
+default = []
+schema = ["dep:schemars", "serde_with/schemars_1"]
+
 [dependencies]
-bincode = "2.0.0-rc.3"
 brioche-resources = { path = "../brioche-resources" }
 bstr = "1.12.1"
-schemars = "1.2.0"
+schemars = { version = "1.2.0", optional = true }
 serde = { version = "1.0.228", features = ["derive"] }
-serde_with = { version = "3.16.1", features = ["schemars_1"] }
+serde_with = "3.16.1"
 thiserror = "2.0.17"
 tick-encoding = "0.1.3"
 

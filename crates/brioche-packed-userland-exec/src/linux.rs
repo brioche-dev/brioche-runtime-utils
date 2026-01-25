@@ -181,7 +181,7 @@ fn error_summary(error: &PackedError) -> &'static str {
             brioche_pack::ExtractPackError::MalformedMarker => {
                 "malformed marker at the end of the packed program"
             }
-            brioche_pack::ExtractPackError::InvalidPack(_) => "failed to parse pack: bincode error",
+            brioche_pack::ExtractPackError::InvalidPack(_) => "failed to deserialize pack data",
             brioche_pack::ExtractPackError::TryFromIntError(_) => "integer conversion error",
         },
         PackedError::PackResourceDirError(error) => match error {

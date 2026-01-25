@@ -14,7 +14,7 @@ color-eyre = "0.6.5"
 eyre = "0.6.12"
 globset = "0.4.18"
 goblin = "0.10.4"
-runnable-core = { path = "../runnable-core" }
+runnable-core = { path = "../runnable-core", features = ["schema"] }
 schemars = "1.2.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.149" }
