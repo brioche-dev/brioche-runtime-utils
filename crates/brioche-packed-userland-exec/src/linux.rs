@@ -1,6 +1,7 @@
 #![cfg(target_os = "linux")]
 
-use std::ffi::{CStr, CString};
+use core::ffi::CStr;
+use std::ffi::CString;
 
 use bstr::ByteSlice as _;
 
@@ -11,7 +12,11 @@ unsafe extern "C" {
 }
 
 #[inline(always)]
-#[allow(clippy::missing_safety_doc)]
+#[allow(
+    clippy::inline_always,
+    clippy::missing_safety_doc,
+    clippy::similar_names
+)]
 pub unsafe fn entrypoint(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int {
     let mut args = vec![];
     let mut env_vars = vec![];
@@ -162,13 +167,13 @@ enum PackedError {
     ResourceNotFound,
 }
 
-impl std::fmt::Display for PackedError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for PackedError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str(error_summary(self))
     }
 }
 
-fn error_summary(error: &PackedError) -> &'static str {
+const fn error_summary(error: &PackedError) -> &'static str {
     match error {
         PackedError::IoError(_) => "io error",
         PackedError::ExtractPackError(error) => match error {
