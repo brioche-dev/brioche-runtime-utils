@@ -1,4 +1,4 @@
-use std::{os::unix::process::CommandExt as _, process::ExitCode};
+use std::{os::unix::ffi::OsStrExt, os::unix::process::CommandExt as _, process::ExitCode};
 
 use eyre::{Context as _, OptionExt as _};
 
@@ -49,8 +49,8 @@ fn run() -> eyre::Result<()> {
     }
 
     let has_sysroot_arg = next_args.iter().any(|arg| {
-        let arg_string = arg.to_string_lossy();
-        arg_string == "--sysroot" || arg_string.starts_with("--sysroot=")
+        let bytes = arg.as_bytes();
+        bytes == b"--sysroot" || bytes.starts_with(b"--sysroot=")
     });
 
     if !has_sysroot_arg {
