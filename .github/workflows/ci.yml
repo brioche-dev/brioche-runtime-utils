@@ -12,6 +12,10 @@ concurrency:
 
 env:
   NIGHTLY_TOOLCHAIN: nightly-2026-01-05
+  # Default environment variables for Cargo
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "false"
+  CARGO_PROFILE_TEST_DEBUG: "false"
 
 jobs:
   check:
