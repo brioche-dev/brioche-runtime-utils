@@ -18,9 +18,7 @@ pub fn find_resource_dirs(
     if include_readonly
         && let Some(input_resource_dirs) = std::env::var_os("BRIOCHE_INPUT_RESOURCE_DIRS")
     {
-        for input_resource_dir in std::env::split_paths(&input_resource_dirs) {
-            paths.push(input_resource_dir);
-        }
+        paths.extend(std::env::split_paths(&input_resource_dirs));
     }
 
     match find_resource_dirs_from_program(program, &mut paths) {
