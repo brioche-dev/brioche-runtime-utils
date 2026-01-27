@@ -192,9 +192,9 @@ fn run_autopack(args: AutopackArgs) -> eyre::Result<()> {
         variables,
         resource_dir,
     };
-    let config = config_template.build(ctx, &recipe_path)?;
+    let (inputs, config) = config_template.build(ctx, &recipe_path)?;
 
-    brioche_autopack::autopack(&config)?;
+    brioche_autopack::autopack(inputs, &config)?;
 
     Ok(())
 }
