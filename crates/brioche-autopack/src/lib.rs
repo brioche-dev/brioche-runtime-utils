@@ -377,13 +377,14 @@ fn autopack_context(config: &AutopackConfig) -> eyre::Result<AutopackContext<'_>
         }
     }
 
-    for link_dep in &config.link_dependencies {
-        // Add bin/ to $PATH if it exists
-        let link_dep_bin = link_dep.join("bin");
-        if link_dep_bin.is_dir() {
-            link_dependency_paths.push(link_dep_bin);
-        }
-    }
+    // Add bin/ to $PATH if it exists
+    link_dependency_paths.extend(
+        config
+            .link_dependencies
+            .iter()
+            .map(|link_dep| link_dep.join("bin"))
+            .filter(|link_dep_bin| link_dep_bin.is_dir()),
+    );
 
     Ok(AutopackContext {
         config,
