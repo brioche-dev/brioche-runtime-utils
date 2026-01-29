@@ -1,10 +1,12 @@
 use std::{
+    ffi::OsStr,
     io::Write as _,
-    os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _},
+    os::unix::{
+        ffi::OsStrExt as _,
+        fs::{OpenOptionsExt as _, PermissionsExt as _},
+    },
     path::{Path, PathBuf},
 };
-
-use bstr::ByteSlice as _;
 
 const SEARCH_DEPTH_LIMIT: u32 = 64;
 
@@ -20,16 +22,10 @@ pub fn find_resource_dirs(
     if include_readonly
         && let Some(input_resource_dirs) = std::env::var_os("BRIOCHE_INPUT_RESOURCE_DIRS")
     {
-        if let Some(input_resource_dirs) = <[u8]>::from_os_str(&input_resource_dirs) {
-            for input_resource_dir in input_resource_dirs.split_str(b":") {
-                if let Ok(path) = input_resource_dir.to_path() {
-                    paths.push(path.to_owned());
-                }
-            }
-        }
-
-        for input_resource_dir in std::env::split_paths(&input_resource_dirs) {
-            paths.push(input_resource_dir);
+        let input_resource_dirs_bytes = input_resource_dirs.as_bytes();
+        for input_resource_dir in input_resource_dirs_bytes.split(|&b| b == b':') {
+            let path = Path::new(OsStr::from_bytes(input_resource_dir));
+            paths.push(path.to_owned());
         }
     }
 

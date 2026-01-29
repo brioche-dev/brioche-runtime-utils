@@ -10,7 +10,6 @@ schema = ["dep:schemars", "serde_with/schemars_1"]
 
 [dependencies]
 brioche-resources = { path = "../brioche-resources" }
-bstr = "1.12.1"
 schemars = { version = "1.2.0", optional = true }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_with = "3.16.1"

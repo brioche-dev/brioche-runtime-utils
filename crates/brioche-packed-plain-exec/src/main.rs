@@ -1,8 +1,11 @@
 #![warn(clippy::std_instead_of_core)]
 
-use std::{ffi::OsString, os::unix::process::CommandExt as _, path::PathBuf, process::ExitCode};
-
-use bstr::ByteSlice as _;
+use std::{
+    ffi::OsStr,
+    os::unix::{ffi::OsStrExt as _, process::CommandExt as _},
+    path::{Path, PathBuf},
+    process::ExitCode,
+};
 
 const BRIOCHE_PACKED_ERROR: u8 = 121;
 
@@ -38,11 +41,7 @@ fn run() -> Result<(), PackedError> {
         } => {
             let mut args = std::env::args_os();
 
-            let interpreter = interpreter
-                .to_path()
-                .map_err(|_| PackedError::InvalidPathBytes {
-                    path: interpreter.clone().into(),
-                })?;
+            let interpreter = Path::new(OsStr::from_bytes(&interpreter));
             let interpreter = brioche_resources::find_in_resource_dirs(&resource_dirs, interpreter)
                 .ok_or_else(|| PackedError::ResourceNotFound {
                     resource: interpreter.to_owned(),
@@ -52,23 +51,13 @@ fn run() -> Result<(), PackedError> {
             let mut resolved_library_dirs = vec![];
 
             for library_dir in &runtime_library_dirs {
-                let library_dir =
-                    library_dir
-                        .to_path()
-                        .map_err(|_| PackedError::InvalidPathBytes {
-                            path: library_dir.clone().into(),
-                        })?;
+                let library_dir = Path::new(OsStr::from_bytes(library_dir));
                 let resolved_library_dir = program_parent_path.join(library_dir);
                 resolved_library_dirs.push(resolved_library_dir);
             }
 
             for library_dir in &library_dirs {
-                let library_dir =
-                    library_dir
-                        .to_path()
-                        .map_err(|_| PackedError::InvalidPathBytes {
-                            path: library_dir.clone().into(),
-                        })?;
+                let library_dir = Path::new(OsStr::from_bytes(library_dir));
                 let library_dir =
                     brioche_resources::find_in_resource_dirs(&resource_dirs, library_dir)
                         .ok_or_else(|| PackedError::ResourceNotFound {
@@ -78,40 +67,27 @@ fn run() -> Result<(), PackedError> {
             }
 
             if !resolved_library_dirs.is_empty() {
-                let mut ld_library_path = bstr::BString::default();
+                let mut ld_library_path = Vec::new();
                 for (n, library_dir) in resolved_library_dirs.iter().enumerate() {
                     if n > 0 {
                         ld_library_path.push(b':');
                     }
 
-                    let path =
-                        <[u8]>::from_path(library_dir).ok_or_else(|| PackedError::InvalidPath {
-                            path: library_dir.to_owned(),
-                        })?;
-                    ld_library_path.extend(path);
+                    let path = library_dir.as_os_str().as_bytes();
+                    ld_library_path.extend_from_slice(path);
                 }
 
                 if let Some(env_library_path) = std::env::var_os("LD_LIBRARY_PATH") {
-                    let env_library_path =
-                        <[u8]>::from_os_str(&env_library_path).ok_or_else(|| {
-                            PackedError::InvalidPathOsString {
-                                path: env_library_path.clone(),
-                            }
-                        })?;
+                    let env_library_path = env_library_path.as_bytes();
                     if !env_library_path.is_empty() {
                         ld_library_path.push(b':');
-                        ld_library_path.extend(env_library_path);
+                        ld_library_path.extend_from_slice(env_library_path);
                     }
                 }
 
                 command.arg("--library-path");
 
-                let ld_library_path =
-                    ld_library_path
-                        .to_os_str()
-                        .map_err(|_| PackedError::InvalidPathBytes {
-                            path: ld_library_path.clone(),
-                        })?;
+                let ld_library_path = OsStr::from_bytes(&ld_library_path);
                 command.arg(ld_library_path);
             }
 
@@ -120,11 +96,7 @@ fn run() -> Result<(), PackedError> {
                 command.arg(arg0);
             }
 
-            let program = program
-                .to_path()
-                .map_err(|_| PackedError::InvalidPathBytes {
-                    path: program.clone().into(),
-                })?;
+            let program = Path::new(OsStr::from_bytes(&program));
             let program = brioche_resources::find_in_resource_dirs(&resource_dirs, program)
                 .ok_or_else(|| PackedError::ResourceNotFound {
                     resource: program.to_owned(),
@@ -199,12 +171,7 @@ fn run() -> Result<(), PackedError> {
                         }
                         runnable_core::EnvValue::Prepend { value, separator } => {
                             let mut value = value.to_os_string(&program_path, &resource_dirs)?;
-                            let separator =
-                                separator
-                                    .to_os_str()
-                                    .map_err(|_| PackedError::InvalidUtf8 {
-                                        bytes: separator.clone().into(),
-                                    })?;
+                            let separator = OsStr::from_bytes(separator);
 
                             let current_value = std::env::var_os(env_name);
                             let new_value = match current_value {
@@ -220,12 +187,7 @@ fn run() -> Result<(), PackedError> {
                         }
                         runnable_core::EnvValue::Append { value, separator } => {
                             let value = value.to_os_string(&program_path, &resource_dirs)?;
-                            let separator =
-                                separator
-                                    .to_os_str()
-                                    .map_err(|_| PackedError::InvalidUtf8 {
-                                        bytes: separator.clone().into(),
-                                    })?;
+                            let separator = OsStr::from_bytes(separator);
 
                             let current_value = std::env::var_os(env_name);
                             let new_value = match current_value {
@@ -268,12 +230,6 @@ enum PackedError {
     RepeatedArgs,
     #[error("resource not found: {resource}")]
     ResourceNotFound { resource: PathBuf },
-    #[error("invalid UTF-8: {bytes:?}")]
-    InvalidUtf8 { bytes: bstr::BString },
-    #[error("invalid path: {path:?}")]
-    InvalidPathBytes { path: bstr::BString },
     #[error("invalid path: {path:?}")]
     InvalidPath { path: PathBuf },
-    #[error("unconvertible path: {path:?}")]
-    InvalidPathOsString { path: OsString },
 }
