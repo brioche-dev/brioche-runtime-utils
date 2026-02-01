@@ -10,7 +10,7 @@ bstr = "1.12.1"
 copy_dir = "0.1.3"
 pathdiff = "0.2.3"
 thiserror = "2.0.18"
-tick-encoding = "0.1.3"
+tick-encoding = "0.1.4"
 ulid = "1.2.1"
 walkdir = "2.5.0"
 
