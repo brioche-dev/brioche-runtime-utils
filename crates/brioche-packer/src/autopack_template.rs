@@ -54,7 +54,10 @@ impl AutopackConfigTemplate {
         self,
         ctx: &AutopackConfigTemplateContext,
         recipe_path: &Path,
-    ) -> eyre::Result<brioche_autopack::AutopackConfig> {
+    ) -> eyre::Result<(
+        brioche_autopack::AutopackInputs,
+        brioche_autopack::AutopackConfig,
+    )> {
         let Self {
             paths,
             globs,
@@ -115,17 +118,18 @@ impl AutopackConfigTemplate {
         let resource_dir = brioche_resources::find_output_resource_dir(&program)?;
         let all_resource_dirs = brioche_resources::find_resource_dirs(&program, true)?;
 
-        Ok(brioche_autopack::AutopackConfig {
+        let config = brioche_autopack::AutopackConfig {
             resource_dir,
             all_resource_dirs,
-            inputs,
             quiet,
             link_dependencies,
             dynamic_binary,
             shared_library,
             script,
             repack,
-        })
+        };
+
+        Ok((inputs, config))
     }
 }
 

@@ -178,24 +178,26 @@ fn run() -> eyre::Result<ExitCode> {
                 extra_libraries: vec![],
                 skip_unknown_libraries: skip_unknown_libs,
             };
-            brioche_autopack::autopack(&brioche_autopack::AutopackConfig {
-                resource_dir,
-                all_resource_dirs,
-                inputs: brioche_autopack::AutopackInputs::Paths(vec![output_path]),
-                quiet: true,
-                link_dependencies: vec![ld_resource_dir],
-                dynamic_binary: Some(brioche_autopack::DynamicBinaryConfig {
-                    packed_executable: packed_path,
-                    extra_runtime_library_paths: vec![],
-                    dynamic_linking: dynamic_linking_config.clone(),
-                }),
-                shared_library: Some(brioche_autopack::SharedLibraryConfig {
-                    dynamic_linking: dynamic_linking_config,
-                    allow_empty: true,
-                }),
-                repack: None,
-                script: None,
-            })?;
+            brioche_autopack::autopack(
+                brioche_autopack::AutopackInputs::Paths(vec![output_path]),
+                &brioche_autopack::AutopackConfig {
+                    resource_dir,
+                    all_resource_dirs,
+                    quiet: true,
+                    link_dependencies: vec![ld_resource_dir],
+                    dynamic_binary: Some(brioche_autopack::DynamicBinaryConfig {
+                        packed_executable: packed_path,
+                        extra_runtime_library_paths: vec![],
+                        dynamic_linking: dynamic_linking_config.clone(),
+                    }),
+                    shared_library: Some(brioche_autopack::SharedLibraryConfig {
+                        dynamic_linking: dynamic_linking_config,
+                        allow_empty: true,
+                    }),
+                    repack: None,
+                    script: None,
+                },
+            )?;
         }
         Mode::AutopackDisabled => {
             // We already wrote the binary, so nothing to do
