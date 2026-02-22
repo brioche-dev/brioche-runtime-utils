@@ -9,7 +9,7 @@ brioche-autopack = { path = "../brioche-autopack" }
 brioche-pack = { workspace = true }
 brioche-resources = { path = "../brioche-resources" }
 bstr = "1.12.1"
-clap = { version = "4.5.58", features = ["derive"] }
+clap = { version = "4.5.60", features = ["derive"] }
 color-eyre = "0.6.5"
 eyre = "0.6.12"
 globset = "0.4.18"
