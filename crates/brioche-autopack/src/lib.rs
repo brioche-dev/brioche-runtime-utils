@@ -76,7 +76,6 @@ pub enum PackSource {
 pub struct AutopackConfig {
     pub resource_dir: PathBuf,
     pub all_resource_dirs: Vec<PathBuf>,
-    pub inputs: AutopackInputs,
     pub quiet: bool,
     pub link_dependencies: Vec<PathBuf>,
     pub dynamic_binary: Option<DynamicBinaryConfig>,
@@ -217,16 +216,16 @@ struct AutopackPathConfig {
     can_skip: bool,
 }
 
-pub fn autopack(config: &AutopackConfig) -> eyre::Result<()> {
+pub fn autopack(inputs: AutopackInputs, config: &AutopackConfig) -> eyre::Result<()> {
     let mut ctx = autopack_context(config)?;
     let mut pending_paths = BTreeMap::<PathBuf, AutopackPathConfig>::new();
 
-    match &config.inputs {
+    match inputs {
         AutopackInputs::Paths(paths) => {
             pending_paths.extend(
                 paths
-                    .iter()
-                    .map(|path| (path.clone(), AutopackPathConfig { can_skip: false })),
+                    .into_iter()
+                    .map(|path| (path, AutopackPathConfig { can_skip: false })),
             );
         }
         AutopackInputs::Globs {
@@ -235,26 +234,26 @@ pub fn autopack(config: &AutopackConfig) -> eyre::Result<()> {
             exclude_patterns,
         } => {
             let mut globs = globset::GlobSetBuilder::new();
-            for pattern in patterns {
+            for pattern in &patterns {
                 globs.add(globset::Glob::new(pattern)?);
             }
 
             let mut exclude_globs = globset::GlobSetBuilder::new();
-            for pattern in exclude_patterns {
+            for pattern in &exclude_patterns {
                 exclude_globs.add(globset::Glob::new(pattern)?);
             }
 
             let globs = globs.build()?;
             let exclude_globs = exclude_globs.build()?;
 
-            let walkdir = walkdir::WalkDir::new(base_path);
+            let walkdir = walkdir::WalkDir::new(&base_path);
             for entry in walkdir {
                 let entry = entry?;
                 if !entry.file_type().is_file() {
                     continue;
                 }
 
-                let relative_entry_path = pathdiff::diff_paths(entry.path(), base_path)
+                let relative_entry_path = pathdiff::diff_paths(entry.path(), &base_path)
                     .ok_or_else(|| {
                         eyre::eyre!(
                             "failed to resolve matched path {} relative to base path {}",
@@ -366,13 +365,14 @@ fn autopack_context(config: &AutopackConfig) -> eyre::Result<AutopackContext<'_>
         }
     }
 
-    for link_dep in &config.link_dependencies {
-        // Add bin/ to $PATH if it exists
-        let link_dep_bin = link_dep.join("bin");
-        if link_dep_bin.is_dir() {
-            link_dependency_paths.push(link_dep_bin);
-        }
-    }
+    // Add bin/ to $PATH if it exists
+    link_dependency_paths.extend(
+        config
+            .link_dependencies
+            .iter()
+            .map(|link_dep| link_dep.join("bin"))
+            .filter(|link_dep_bin| link_dep_bin.is_dir()),
+    );
 
     Ok(AutopackContext {
         config,

@@ -9,7 +9,7 @@ brioche-autopack = { path = "../brioche-autopack" }
 brioche-pack = { workspace = true }
 brioche-resources = { path = "../brioche-resources" }
 eyre = "0.6.12"
-tempfile = "3.24.0"
+tempfile = "3.27.0"
 thiserror = "2.0.18"
 ulid = "1.2.1"
 

@@ -1,10 +1,6 @@
 use std::{
-    ffi::OsStr,
     io::Write as _,
-    os::unix::{
-        ffi::OsStrExt as _,
-        fs::{OpenOptionsExt as _, PermissionsExt as _},
-    },
+    os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _},
     path::{Path, PathBuf},
 };
 
@@ -22,11 +18,7 @@ pub fn find_resource_dirs(
     if include_readonly
         && let Some(input_resource_dirs) = std::env::var_os("BRIOCHE_INPUT_RESOURCE_DIRS")
     {
-        let input_resource_dirs_bytes = input_resource_dirs.as_bytes();
-        for input_resource_dir in input_resource_dirs_bytes.split(|&b| b == b':') {
-            let path = Path::new(OsStr::from_bytes(input_resource_dir));
-            paths.push(path.to_owned());
-        }
+        paths.extend(std::env::split_paths(&input_resource_dirs));
     }
 
     match find_resource_dirs_from_program(program, &mut paths) {

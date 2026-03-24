@@ -11,7 +11,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
 
 env:
-  NIGHTLY_TOOLCHAIN: nightly-2026-01-05
+  NIGHTLY_TOOLCHAIN: nightly-2026-03-15
+  # Default environment variables for Cargo
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "false"
+  CARGO_PROFILE_TEST_DEBUG: "false"
 
 jobs:
   check:
@@ -37,10 +41,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
-      # Run tests in release mode. Running tests in debug mode uses a lot
-      # more disk space, so much so that it can cause the run to fail
       - name: Run tests
-        run: cargo test --all --release
+        run: cargo test --all
 
   build:
     name: Build artifacts [${{ matrix.name }}]
@@ -135,7 +137,7 @@ jobs:
           TOOLS_TARGET: ${{ matrix.tools-target }}
           PACKED_EXEC: ${{ matrix.packed-exec }}
       - name: Upload artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: brioche-runtime-utils-${{ matrix.name }}
           if-no-files-found: error
@@ -156,22 +158,22 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Download artifacts (x86_64-linux)
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: brioche-runtime-utils-x86_64-linux
           path: artifacts/brioche
       - name: Download artifacts (aarch64-linux)
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: brioche-runtime-utils-aarch64-linux
           path: artifacts/brioche
       - name: Download artifacts (x86_64-macos)
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: brioche-runtime-utils-x86_64-macos
           path: artifacts/brioche
       - name: Download artifacts (aarch64-macos)
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: brioche-runtime-utils-aarch64-macos
           path: artifacts/brioche
