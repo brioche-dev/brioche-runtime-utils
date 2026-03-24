@@ -1,10 +1,11 @@
 use std::{
+    ffi::{OsStr, OsString},
     io::{Read as _, Seek},
-    path::PathBuf,
+    os::unix::ffi::{OsStrExt as _, OsStringExt as _},
+    path::{Path, PathBuf},
     process::ExitCode,
 };
 
-use bstr::{ByteSlice as _, ByteVec as _};
 use eyre::{Context as _, OptionExt as _};
 
 #[derive(Debug)]
@@ -16,21 +17,18 @@ enum StripArg {
 }
 
 impl StripArg {
-    fn into_args(self) -> eyre::Result<Vec<std::ffi::OsString>> {
+    fn into_args(self) -> Vec<OsString> {
         match self {
-            Self::Arg(arg) => Ok(vec![arg]),
+            Self::Arg(arg) => vec![arg],
             Self::DashOPath(path) => {
-                let path_bytes = <[u8]>::from_path(&path).ok_or_eyre("invalid path")?;
+                let path_bytes = path.as_os_str().as_bytes();
 
                 let mut arg = b"-o".to_vec();
                 arg.extend_from_slice(path_bytes);
-                Ok(vec![arg.to_os_str()?.to_owned()])
+                vec![OsString::from_vec(arg)]
             }
-            Self::DashOFollowedByPath(path) => Ok(vec![
-                std::ffi::OsString::from("-o"),
-                std::ffi::OsString::from(path),
-            ]),
-            Self::InputPath(path) => Ok(vec![std::ffi::OsString::from(path)]),
+            Self::DashOFollowedByPath(path) => vec![OsString::from("-o"), OsString::from(path)],
+            Self::InputPath(path) => vec![OsString::from(path)],
         }
     }
 }
@@ -84,10 +82,9 @@ fn run() -> eyre::Result<ExitCode> {
 
     // Parse each argument
     while let Some(arg) = args.next() {
-        let arg_bytes = <[u8]>::from_os_str(&arg).ok_or_eyre("invalid arg")?;
-        let arg_bytes = bstr::BStr::new(arg_bytes);
+        let arg_bytes = arg.as_bytes();
 
-        match &**arg_bytes {
+        match arg_bytes {
             b"-F"
             | b"--target"
             | b"-I"
@@ -116,7 +113,7 @@ fn run() -> eyre::Result<ExitCode> {
             _ => {
                 if let Some(output) = arg_bytes.strip_prefix(b"-o") {
                     // Support "-o<path>" syntax
-                    let output = output.to_path().map_err(|_| eyre::eyre!("invalid path"))?;
+                    let output = Path::new(OsStr::from_bytes(output));
                     strip_args.push(StripArg::DashOPath(output.to_path_buf()));
                 } else if arg_bytes.starts_with(b"-") {
                     // Pass through any extra argument starting with a "-"
@@ -127,9 +124,7 @@ fn run() -> eyre::Result<ExitCode> {
                     eyre::bail!("using @ for passing args is not supported");
                 } else {
                     // Other args are treated as input files
-                    let input_path = arg_bytes
-                        .to_path()
-                        .map_err(|_| eyre::eyre!("invalid path"))?;
+                    let input_path = Path::new(OsStr::from_bytes(arg_bytes));
                     strip_args.push(StripArg::InputPath(input_path.to_owned()));
                 }
             }
@@ -141,14 +136,14 @@ fn run() -> eyre::Result<ExitCode> {
     remap_files(&mut strip_args, &mut remapped_files)?;
 
     // Convert the remapped args back into an argument list
-    let strip_args = strip_args
+    let strip_args: Vec<_> = strip_args
         .into_iter()
-        .map(StripArg::into_args)
-        .collect::<eyre::Result<Vec<_>>>()?;
+        .flat_map(StripArg::into_args)
+        .collect();
 
     // Call the original strip process
     let mut command = std::process::Command::new(strip);
-    command.args(strip_args.iter().flatten());
+    command.args(strip_args);
     let status = command.status()?;
 
     if !status.success() {
@@ -419,19 +414,19 @@ fn finish_remapped_file(remapped_file: RemapFile) -> eyre::Result<()> {
                     runtime_library_dirs,
                 } => {
                     // Get the original program name
-                    let program = program.to_path().map_err(|_| {
-                        eyre::eyre!("invalid program path: {}", bstr::BStr::new(&program))
-                    })?;
-                    let program_name = program
+                    let program_path = Path::new(OsStr::from_bytes(&program));
+                    let program_name = program_path
                         .file_name()
                         .ok_or_eyre("could not get program name from path")?;
-                    let program_name = std::path::Path::new(program_name);
+                    let program_name = Path::new(program_name);
 
                     // Determine if the original program was executable
-                    let program_path =
-                        brioche_resources::find_in_resource_dirs(&input_resource_dirs, program)
-                            .ok_or_eyre("could not find program in resource dirs")?;
-                    let program_metadata = std::fs::metadata(&program_path)
+                    let program_resource_path = brioche_resources::find_in_resource_dirs(
+                        &input_resource_dirs,
+                        program_path,
+                    )
+                    .ok_or_eyre("could not find program in resource dirs")?;
+                    let program_metadata = std::fs::metadata(&program_resource_path)
                         .context("could not get program metadata")?;
                     let is_executable = is_executable(&program_metadata.permissions());
 
@@ -445,8 +440,7 @@ fn finish_remapped_file(remapped_file: RemapFile) -> eyre::Result<()> {
                         is_executable,
                         program_name,
                     )?;
-                    let new_source_resource = <Vec<u8>>::from_path_buf(new_source_resource)
-                        .map_err(|_| eyre::eyre!("invalid UTF-8 in path"))?;
+                    let new_source_resource = new_source_resource.into_os_string().into_vec();
 
                     // Re-use the same details from the pack, but with the
                     // new resource created from the temp file

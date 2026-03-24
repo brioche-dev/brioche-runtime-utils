@@ -1,9 +1,9 @@
 #![cfg(target_os = "linux")]
 
 use core::ffi::CStr;
-use std::ffi::CString;
-
-use bstr::ByteSlice as _;
+use std::ffi::{CString, OsStr};
+use std::os::unix::ffi::OsStrExt as _;
+use std::path::Path;
 
 const BRIOCHE_PACKED_ERROR: u8 = 121;
 
@@ -68,35 +68,29 @@ fn run(args: &[&CStr], env_vars: &[&CStr]) -> Result<(), PackedError> {
             library_dirs,
             runtime_library_dirs,
         } => {
-            let interpreter = interpreter
-                .to_path()
-                .map_err(|_| PackedError::InvalidPath)?;
+            let interpreter = Path::new(OsStr::from_bytes(&interpreter));
             let interpreter = brioche_resources::find_in_resource_dirs(&resource_dirs, interpreter)
                 .ok_or(PackedError::ResourceNotFound)?;
 
-            let program = program.to_path().map_err(|_| PackedError::InvalidPath)?;
+            let program = Path::new(OsStr::from_bytes(&program));
             let program = brioche_resources::find_in_resource_dirs(&resource_dirs, program)
                 .ok_or(PackedError::ResourceNotFound)?;
             let program = program.canonicalize()?;
             let mut exec = userland_execve::ExecOptions::new(&interpreter);
 
-            let interpreter = <[u8]>::from_path(&interpreter).ok_or(PackedError::InvalidPath)?;
+            let interpreter = interpreter.as_os_str().as_bytes();
             let interpreter = CString::new(interpreter).map_err(|_| PackedError::InvalidPath)?;
 
             let mut resolved_library_dirs = vec![];
 
             for library_dir in &runtime_library_dirs {
-                let library_dir = library_dir
-                    .to_path()
-                    .map_err(|_| PackedError::InvalidPath)?;
+                let library_dir = Path::new(OsStr::from_bytes(library_dir));
                 let resolved_library_dir = parent_path.join(library_dir);
                 resolved_library_dirs.push(resolved_library_dir);
             }
 
             for library_dir in &library_dirs {
-                let library_dir = library_dir
-                    .to_path()
-                    .map_err(|_| PackedError::InvalidPath)?;
+                let library_dir = Path::new(OsStr::from_bytes(library_dir));
                 let library_dir =
                     brioche_resources::find_in_resource_dirs(&resource_dirs, library_dir)
                         .ok_or(PackedError::ResourceNotFound)?;
@@ -107,22 +101,21 @@ fn run(args: &[&CStr], env_vars: &[&CStr]) -> Result<(), PackedError> {
             exec.arg(interpreter);
 
             if !resolved_library_dirs.is_empty() {
-                let mut ld_library_path = bstr::BString::default();
+                let mut ld_library_path = Vec::new();
                 for (n, library_dir) in resolved_library_dirs.iter().enumerate() {
                     if n > 0 {
                         ld_library_path.push(b':');
                     }
 
-                    let path = <[u8]>::from_path(library_dir).ok_or(PackedError::InvalidPath)?;
-                    ld_library_path.extend(path);
+                    let path = library_dir.as_os_str().as_bytes();
+                    ld_library_path.extend_from_slice(path);
                 }
 
                 if let Some(env_library_path) = std::env::var_os("LD_LIBRARY_PATH") {
-                    let env_library_path =
-                        <[u8]>::from_os_str(&env_library_path).ok_or(PackedError::InvalidPath)?;
+                    let env_library_path = env_library_path.as_bytes();
                     if !env_library_path.is_empty() {
                         ld_library_path.push(b':');
-                        ld_library_path.extend(env_library_path);
+                        ld_library_path.extend_from_slice(env_library_path);
                     }
                 }
 
@@ -139,7 +132,7 @@ fn run(args: &[&CStr], env_vars: &[&CStr]) -> Result<(), PackedError> {
                 exec.arg(arg0);
             }
 
-            let program = <[u8]>::from_path(&program).ok_or(PackedError::InvalidPath)?;
+            let program = program.as_os_str().as_bytes();
             let program = CString::new(program).map_err(|_| PackedError::InvalidPath)?;
             exec.arg(program);
 

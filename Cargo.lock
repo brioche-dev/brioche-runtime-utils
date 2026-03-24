@@ -191,7 +191,6 @@ version = "0.1.0"
 dependencies = [
  "brioche-pack",
  "brioche-resources",
- "bstr",
  "eyre",
  "globset",
  "goblin 0.10.5",
@@ -216,7 +215,6 @@ dependencies = [
  "brioche-autopack",
  "brioche-pack",
  "brioche-resources",
- "bstr",
  "chumsky",
  "eyre",
  "thiserror",
@@ -241,7 +239,6 @@ version = "0.1.1"
 dependencies = [
  "brioche-pack",
  "brioche-resources",
- "bstr",
  "libc",
  "runnable-core",
  "serde_json",
@@ -254,7 +251,6 @@ version = "0.1.1"
 dependencies = [
  "brioche-pack",
  "brioche-resources",
- "bstr",
  "cfg-if",
  "libc",
  "thiserror",
@@ -268,7 +264,6 @@ dependencies = [
  "brioche-autopack",
  "brioche-pack",
  "brioche-resources",
- "bstr",
  "clap",
  "color-eyre",
  "eyre",
@@ -287,7 +282,6 @@ name = "brioche-resources"
 version = "0.1.0"
 dependencies = [
  "blake3",
- "bstr",
  "copy_dir",
  "pathdiff",
  "thiserror",
@@ -303,7 +297,6 @@ dependencies = [
  "brioche-autopack",
  "brioche-pack",
  "brioche-resources",
- "bstr",
  "eyre",
  "tempfile",
  "thiserror",
@@ -1023,7 +1016,6 @@ name = "runnable-core"
 version = "0.1.0"
 dependencies = [
  "brioche-resources",
- "bstr",
  "schemars 1.2.1",
  "serde",
  "serde_with",

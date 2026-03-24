@@ -1,11 +1,12 @@
 use std::{
+    ffi::OsStr,
     io::Seek as _,
+    os::unix::ffi::{OsStrExt as _, OsStringExt as _},
     os::unix::fs::OpenOptionsExt as _,
     path::{Path, PathBuf},
     process::ExitCode,
 };
 
-use bstr::{ByteSlice as _, ByteVec as _};
 use clap::Parser;
 use eyre::{Context as _, OptionExt as _};
 
@@ -220,10 +221,8 @@ fn run_update_source(args: &UpdateSourceArgs) -> eyre::Result<()> {
             library_dirs,
             runtime_library_dirs,
         } => {
-            let program = program
-                .to_path()
-                .map_err(|_| eyre::eyre!("invalid program path: {}", bstr::BStr::new(&program)))?;
-            let program_name = program
+            let program_path = Path::new(OsStr::from_bytes(&program));
+            let program_name = program_path
                 .file_name()
                 .ok_or_eyre("could not get program name from path")?;
             let new_name = args
@@ -245,8 +244,7 @@ fn run_update_source(args: &UpdateSourceArgs) -> eyre::Result<()> {
                 is_executable,
                 new_name,
             )?;
-            let new_source_resource = <Vec<u8>>::from_path_buf(new_source_resource)
-                .map_err(|_| eyre::eyre!("invalid UTF-8 in path"))?;
+            let new_source_resource = new_source_resource.into_os_string().into_vec();
 
             let new_pack = brioche_pack::Pack::LdLinux {
                 program: new_source_resource,
