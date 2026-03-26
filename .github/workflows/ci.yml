@@ -202,10 +202,10 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
+          AWS_DEFAULT_REGION: ${{ vars.AWS_DEFAULT_REGION }}
           AWS_REQUEST_CHECKSUM_CALCULATION: WHEN_REQUIRED
           AWS_RESPONSE_CHECKSUM_CALCULATION: WHEN_REQUIRED
-          S3_ENDPOINT: ${{ secrets.AWS_ENDPOINT_URL_S3 }}
+          S3_ENDPOINT: ${{ vars.AWS_ENDPOINT_URL_S3 }}
           S3_URL: ${{ vars.S3_URL }}
       - name: Upload to S3
         run: |
@@ -222,8 +222,8 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
+          AWS_DEFAULT_REGION: ${{ vars.AWS_DEFAULT_REGION }}
           AWS_REQUEST_CHECKSUM_CALCULATION: WHEN_REQUIRED
           AWS_RESPONSE_CHECKSUM_CALCULATION: WHEN_REQUIRED
-          S3_ENDPOINT: ${{ secrets.AWS_ENDPOINT_URL_S3 }}
+          S3_ENDPOINT: ${{ vars.AWS_ENDPOINT_URL_S3 }}
           S3_URL: ${{ vars.S3_URL }}
