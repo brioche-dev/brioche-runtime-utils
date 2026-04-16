@@ -385,9 +385,8 @@ fn finish_remapped_file(remapped_file: RemapFile) -> eyre::Result<()> {
             output_path,
         } => {
             // Open the output file
-            let mut output = std::fs::File::create(output_path).with_context(|| {
-                format!("failed to open output {}", temp_file.path().display(),)
-            })?;
+            let mut output = std::fs::File::create(output_path)
+                .with_context(|| format!("failed to open output {}", temp_file.path().display()))?;
 
             // Copy the temp file to the output
             temp_file.rewind()?;
