@@ -16,5 +16,9 @@ serde_json = "1.0.149"
 thiserror = "2.0.18"
 walkdir = "2.5.0"
 
+[dev-dependencies]
+libloading = "0.8"
+tempfile = "3.27.0"
+
 [lints]
 workspace = true

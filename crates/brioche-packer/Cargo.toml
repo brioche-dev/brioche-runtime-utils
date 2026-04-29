@@ -20,5 +20,8 @@ serde_json = { version = "1.0.149" }
 serde_with = { version = "3.18.0", features = ["schemars_1"] }
 walkdir = "2.5.0"
 
+[dev-dependencies]
+tempfile = "3.27.0"
+
 [lints]
 workspace = true

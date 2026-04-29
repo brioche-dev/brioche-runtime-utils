@@ -194,9 +194,11 @@ dependencies = [
  "eyre",
  "globset",
  "goblin 0.10.5",
+ "libloading",
  "pathdiff",
  "runnable-core",
  "serde_json",
+ "tempfile",
  "thiserror",
  "walkdir",
 ]
@@ -206,6 +208,7 @@ name = "brioche-cc"
 version = "0.1.0"
 dependencies = [
  "eyre",
+ "tempfile",
 ]
 
 [[package]]
@@ -217,6 +220,8 @@ dependencies = [
  "brioche-resources",
  "chumsky",
  "eyre",
+ "goblin 0.10.5",
+ "tempfile",
  "thiserror",
 ]
 
@@ -237,11 +242,13 @@ dependencies = [
 name = "brioche-packed-plain-exec"
 version = "0.1.1"
 dependencies = [
+ "brioche-autopack",
  "brioche-pack",
  "brioche-resources",
  "libc",
  "runnable-core",
  "serde_json",
+ "tempfile",
  "thiserror",
 ]
 
@@ -249,9 +256,11 @@ dependencies = [
 name = "brioche-packed-userland-exec"
 version = "0.1.1"
 dependencies = [
+ "brioche-autopack",
  "brioche-pack",
  "brioche-resources",
  "libc",
+ "tempfile",
  "thiserror",
  "userland-execve",
 ]
@@ -273,6 +282,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with",
+ "tempfile",
  "walkdir",
 ]
 
@@ -763,6 +773,16 @@ name = "libc"
 version = "0.2.186"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
+
+[[package]]
+name = "libloading"
+version = "0.8.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7c4b02199fee7c5d21a5ae7d8cfa79a6ef5bb2fc834d6e9058e89c825efdc55"
+dependencies = [
+ "cfg-if",
+ "windows-link",
+]
 
 [[package]]
 name = "linux-raw-sys"
