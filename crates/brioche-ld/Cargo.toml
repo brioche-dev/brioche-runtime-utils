@@ -8,7 +8,7 @@ rust-version.workspace = true
 brioche-autopack = { path = "../brioche-autopack" }
 brioche-pack = { workspace = true }
 brioche-resources = { path = "../brioche-resources" }
-chumsky = "0.12.0"
+chumsky = "0.13.0"
 eyre = "0.6.12"
 thiserror = "2.0.18"
 
