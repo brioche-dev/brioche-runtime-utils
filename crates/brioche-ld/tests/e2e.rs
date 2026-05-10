@@ -31,7 +31,7 @@ fn setup_ld_harness(tmp: &Path, inner_ld_script: &str) -> PathBuf {
     std::fs::create_dir_all(&libexec).unwrap();
 
     let wrapper = bin.join("ld");
-    std::fs::copy(BRIOCHE_LD, &wrapper).unwrap();
+    std::fs::hard_link(BRIOCHE_LD, &wrapper).unwrap();
 
     let inner_ld = libexec.join("ld");
     std::fs::write(&inner_ld, inner_ld_script).unwrap();
