@@ -9,7 +9,7 @@ brioche-pack = { workspace = true }
 brioche-resources = { path = "../brioche-resources" }
 libc = "0.2.186"
 runnable-core = { path = "../runnable-core" }
-serde_json = "1.0.149"
+serde_json = "1.0.150"
 thiserror = "2.0.18"
 
 [dev-dependencies]
