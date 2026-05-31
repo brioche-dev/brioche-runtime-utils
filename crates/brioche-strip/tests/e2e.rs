@@ -32,7 +32,7 @@ fn setup_strip_harness(tmp: &Path, inner_strip_script: &str) -> PathBuf {
     std::fs::create_dir_all(&libexec).unwrap();
 
     let wrapper = bin.join("brioche-strip");
-    std::fs::copy(BRIOCHE_STRIP, &wrapper).unwrap();
+    std::fs::hard_link(BRIOCHE_STRIP, &wrapper).unwrap();
 
     let inner_strip = libexec.join("strip");
     std::fs::write(&inner_strip, inner_strip_script).unwrap();
