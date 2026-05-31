@@ -33,7 +33,7 @@ fn setup_cc_harness(tmp: &Path, inner_cc_script: &str) -> (PathBuf, PathBuf) {
     let sysroot = sysroot.canonicalize().unwrap();
 
     let wrapper = bin.join("cc");
-    std::fs::copy(BRIOCHE_CC, &wrapper).unwrap();
+    std::fs::hard_link(BRIOCHE_CC, &wrapper).unwrap();
 
     let inner_cc = libexec.join("cc");
     std::fs::write(&inner_cc, inner_cc_script).unwrap();
