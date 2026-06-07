@@ -12,7 +12,7 @@ schema = ["dep:schemars", "serde_with/schemars_1"]
 brioche-resources = { path = "../brioche-resources" }
 schemars = { version = "1.2.1", optional = true }
 serde = { version = "1.0.228", features = ["derive"] }
-serde_with = "3.20.0"
+serde_with = "3.21.0"
 thiserror = "2.0.18"
 tick-encoding = "0.1.4"
 
