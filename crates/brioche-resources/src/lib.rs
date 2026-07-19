@@ -103,7 +103,7 @@ pub fn add_named_blob(
     std::fs::create_dir_all(&blob_dir)?;
 
     // Open a temporary file to copy the contents to
-    let blob_temp_id = ulid::Ulid::r#gen();
+    let blob_temp_id = ulid::Ulid::generate();
     let blob_temp_path = blob_dir.join(blob_temp_id.to_string());
     let mut blob_file_options = std::fs::OpenOptions::new();
     blob_file_options.create_new(true).write(true);
@@ -211,7 +211,7 @@ pub fn add_named_resource_directory(
     let resources_directories_dir = resource_dir.join("directories");
     std::fs::create_dir_all(&resources_directories_dir)?;
 
-    let temp_name = ulid::Ulid::r#gen().to_string();
+    let temp_name = ulid::Ulid::generate().to_string();
     let temp_path = resources_directories_dir.join(temp_name);
     copy_dir::copy_dir(source, &temp_path)?;
 
