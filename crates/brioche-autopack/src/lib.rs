@@ -820,9 +820,7 @@ fn autopack_repack(
     let repack_source = pack_source(source_path, &extracted.pack, &ctx.config.all_resource_dirs)
         .with_context(|| format!("failed to repack {}", source_path.display()))?;
 
-    let unpacked_source_path;
-    let unpacked_output_path;
-    match repack_source {
+    let (unpacked_source_path, unpacked_output_path) = match repack_source {
         PackSource::This => {
             // Write the unpacked contents to the output path
             let unpacked_contents = &contents[..extracted.unpacked_len];
@@ -834,15 +832,13 @@ fn autopack_repack(
             })?;
 
             // Repack the unpacked contents directly at the output path
-            unpacked_source_path = output_path.to_owned();
-            unpacked_output_path = output_path.to_owned();
+            (output_path.to_owned(), output_path.to_owned())
         }
         PackSource::Path(path) => {
             // Repack the source path and write to the output path
-            unpacked_source_path = path;
-            unpacked_output_path = output_path.to_owned();
+            (path, output_path.to_owned())
         }
-    }
+    };
 
     let result = try_autopack_path(
         ctx,
