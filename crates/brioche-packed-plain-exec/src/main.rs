@@ -9,7 +9,6 @@ use std::{
 
 const BRIOCHE_PACKED_ERROR: u8 = 121;
 
-#[must_use]
 pub fn main() -> ExitCode {
     let result = run();
     match result {
