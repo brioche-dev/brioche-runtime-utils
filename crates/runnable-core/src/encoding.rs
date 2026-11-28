@@ -1,5 +1,7 @@
 use std::borrow::Cow;
 
+// TODO: Revisit this likely false positive when a newer version of Cargo is released
+#[allow(clippy::empty_enums)]
 pub enum TickEncoded {}
 
 impl<T> serde_with::SerializeAs<T> for TickEncoded
